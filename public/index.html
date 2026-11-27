@@ -267,6 +267,7 @@ footer{margin-top:26px;text-align:center;color:var(--ink2);font-size:11.5px}
       <button class="btn small danger" id="logoutBtn" data-i18n="logout">خروج</button>
     </div>
     <input class="search" id="empSearch" enterkeyhint="search" style="margin:0 0 12px" data-i18n-ph="empSearchPh" placeholder="ابحث بالاسم أو الكود…">
+    <div id="searchRes"></div>
     <div class="card" id="companiesCard" style="margin-bottom:12px">
       <div class="line-head" id="compHead"><span class="nm" data-i18n="companiesTitle">شركات السويدي التابعة</span><span class="badge" id="compCount"></span></div>
       <div id="compBody" class="hidden" style="margin-top:10px">
@@ -301,7 +302,7 @@ footer{margin-top:26px;text-align:center;color:var(--ink2);font-size:11.5px}
       <div style="display:flex;gap:8px"><input id="pwNew" type="password" autocomplete="new-password" data-i18n-ph="pwNewPh" placeholder="كلمة السر الجديدة (٦ حروف أو أكتر)" style="flex:1"><button class="btn small" id="pwBtn" data-i18n="pwBtn">تغيير</button></div>
       <div class="mut hidden" id="pwMsg" style="margin-top:8px"></div>
     </div>
-    <div id="dupWarn"></div><div id="searchRes"></div><div id="linesList"></div>
+    <div id="dupWarn"></div><div id="linesList"></div>
   </div>
 
   <div class="modal-bg hidden" id="statModal">
