@@ -101,6 +101,8 @@ col.c-code{width:7%}col.c-name{width:10%}col.c-comp{width:8%}col.c-dept{width:7%
 .badge.on{background:var(--okbg);color:var(--ok);border-color:var(--ok)}
 .badge.off{background:var(--badbg);color:#d33;border-color:#d33}
 [data-theme="dark"] .badge.off{color:#ff8a92}
+.dup-warn{background:#fff8e1;color:#7a5800;border:1px solid #e0a800;border-radius:12px;padding:10px 12px;font-size:13px;font-weight:700;margin-bottom:10px}
+[data-theme="dark"] .dup-warn{background:#3a2f10;color:#ffd97a;border-color:#8a6d1a}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;text-align:center}
 .stat .n{font-size:24px;font-weight:800;color:var(--accent)}
@@ -272,7 +274,7 @@ footer{margin-top:26px;text-align:center;color:var(--ink2);font-size:11.5px}
       <div style="display:flex;gap:8px"><input id="pwNew" type="password" autocomplete="new-password" data-i18n-ph="pwNewPh" placeholder="كلمة السر الجديدة (٦ حروف أو أكتر)" style="flex:1"><button class="btn small" id="pwBtn" data-i18n="pwBtn">تغيير</button></div>
       <div class="mut hidden" id="pwMsg" style="margin-top:8px"></div>
     </div>
-    <div id="linesList"></div>
+    <div id="dupWarn"></div><div id="searchRes"></div><div id="linesList"></div>
   </div>
 
   <div class="modal-bg hidden" id="statModal">
@@ -286,6 +288,30 @@ footer{margin-top:26px;text-align:center;color:var(--ink2);font-size:11.5px}
     </div>
   </div>
 
+  <div class="modal-bg hidden" id="editModal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2 data-i18n="editTitle">تعديل بيانات الموظف</h2>
+        <button class="icon-btn" id="editClose" data-i18n="mClose">إغلاق</button>
+      </div>
+      <div class="modal-list">
+        <label data-i18n="fName">الاسم</label><input id="edName">
+        <label data-i18n="fCode">الكود</label><input id="edCode" inputmode="numeric">
+        <label data-i18n="fCompany">الشركة</label><select id="edCompany"></select>
+        <label data-i18n="fDept">القسم</label><input id="edDept">
+        <label data-i18n="colStop">محطة الركوب بالتحديد</label><input id="edStop">
+        <label data-i18n="colTime">ميعاد الركوب</label><input id="edTime" inputmode="numeric" placeholder="07:30">
+        <label data-i18n="fKind">الحالة</label><select id="edKind"><option value="fixed">ثابت</option><option value="flex">متغير</option></select>
+        <div id="edShifts" style="display:none;flex-direction:column;gap:8px">
+          <label data-i18n="shift2">الوردية التانية</label><input id="edStop2" data-i18n-ph="colStop2" placeholder="محطة الوردية التانية"><input id="edTime2" inputmode="numeric" placeholder="07:30">
+          <label data-i18n="shift3">الوردية التالتة</label><input id="edStop3" data-i18n-ph="colStop3" placeholder="محطة الوردية التالتة"><input id="edTime3" inputmode="numeric" placeholder="07:30">
+        </div>
+        <div class="err hidden" id="edErr"></div>
+        <button class="btn" id="edSave" data-i18n="save">حفظ</button>
+      </div>
+    </div>
+  </div>
+
   <footer data-i18n="foot">ELSEWEDY ELECTRIC — Egytech Transport Lines</footer>
 </div>
 
@@ -293,8 +319,8 @@ footer{margin-top:26px;text-align:center;color:var(--ink2);font-size:11.5px}
 'use strict';
 const $ = id => document.getElementById(id);
 const I = {
-  ar:{title:'خطوط سير العربيات',subtitle:'السويدي إيجيتك — تسجيل الموظفين في خطوط النقل',regTitle:'تسجيل في خط سير',regHint:'اختار الخط ومحطة الركوب واكتب بياناتك. هتظهر في قايمة الخط فورًا.',fType:'نوع الراكب',tEmp:'موظف بالسويدي',tExt:'من خارج الشركة',fLine:'خط السير',fStop:'محطة الركوب',stopPh:'اكتب محطة الركوب',fTime:'ميعاد الركوب',fName:'الاسم',fCode:'الكود',fCodeOpt:'الكود (اختياري)',fCompany:'الشركة',fDept:'القسم',deptPh:'اكتب القسم',companyNote:'الشركة: السويدي (تلقائي)',companyEmp:'السويدي',badgeExt:'خارجي',fKind:'الحالة',companiesTitle:'شركات السويدي التابعة',compAdd:'إضافة',compPh:'اسم الشركة الجديدة',confirmCompDel:'تمسح الشركة دي من القايمة؟',kFixed:'ثابت',kFlex:'متغير',kindNote:'ثابت: بتنزل وردية أولى ثابتة كل يوم.\nمتغير: بتنزل ورديات مختلفة (ورادي).',shift2:'الوردية التانية',shift3:'الوردية التالتة',errStop2:'اكتب محطة الركوب في الوردية التانية',errTime2:'اختار ميعاد الركوب في الوردية التانية',errStop3:'اكتب محطة الركوب في الوردية التالتة',errTime3:'اختار ميعاد الركوب في الوردية التالتة',errLine2:'اختار خط الوردية التانية',errLine3:'اختار خط الوردية التالتة',colLine2:'خط الوردية التانية',colStop2:'محطة الوردية التانية',colTime2:'ميعاد الوردية التانية',colLine3:'خط الوردية التالتة',colStop3:'محطة الوردية التالتة',colTime3:'ميعاد الوردية التالتة',submit:'تسجيل',done:'تم التسجيل ✔',again:'تسجيل موظف تاني',adminLogin:'دخول المسؤول',loginTitle:'دخول المسؤول',fUser:'اسم المستخدم',fPass:'كلمة السر',loginBtn:'دخول',loginErr:'بيانات الدخول غير صحيحة',back:'رجوع للتسجيل',sLines:'خط نشط',sRiders:'موظف مسجل',sToday:'سجل النهارده',expAll:'تنزيل Excel كل الخطوط',logout:'خروج',foot:'ELSEWEDY ELECTRIC — Egytech Transport Lines',searchPh:'ابحث عن الخط…',noMatch:'لا يوجد خط بهذا الاسم',pickLine:'— اختار الخط —',pickCompany:'اختار الشركة',pickStop:'— اختار المحطة —',fillAll:'املأ البيانات المطلوبة واختار الخط والمحطة',dup:'الكود ده مسجل قبل كده في خط: ',time:'الميعاد',price:'سعر الدورة',stop:'المحطة',line:'الخط',active:'شغال',suspended:'موقوف',riders:'موظف',noRiders:'لسه مفيش موظفين مسجلين في الخط ده',expOne:'Excel',del:'مسح',suspend:'إيقاف',activate:'تشغيل',confirmDel:'تمسح الموظف ده؟',colCode:'الكود',colName:'الاسم',colCompany:'الشركة',colDept:'القسم',colStop:'محطة الركوب بالتحديد',colTime:'ميعاد الركوب',colKind:'الحالة',errName:'اكتب اسم صحيح (٣ حروف على الأقل)',errCode:'اكتب كود صحيح (أرقام بس، رقمين على الأقل)',errCompany:'اكتب اسم الشركة',errStop:'اكتب محطة الركوب',errTime:'اختار ميعاد الركوب',errDept:'اكتب القسم',errLine:'اختار خط السير',timePh:'مثال: 07:30',pwTitle:'تغيير كلمة السر',pwNewPh:'كلمة السر الجديدة (٦ حروف أو أكتر)',pwBtn:'تغيير',pwShort:'كلمة السر لازم تكون ٦ حروف أو أكتر',pwDone:'اتغيرت كلمة السر ✔',pwErr:'حصل خطأ، جرب تاني',errRate:'محاولات كتير من الجهاز ده، استنى شوية وجرب تاني',errTimeBad:'الميعاد مش صحيح: الساعة من 0 لـ 23 والدقايق من 0 لـ 59',errNameTriple:'اكتب اسمك ثلاثي',mClose:'إغلاق',mEmpty:'مفيش بيانات للعرض',mStopsCount:'محطة',mRidersCount:'موظف',dlApp:'تحميل التطبيق (أندرويد)',iosNote:'للآيفون: افتح الموقع في Safari واختار «إضافة إلى الشاشة الرئيسية»'},
-  en:{title:'Bus Line Registration',subtitle:'Elsewedy Egytech — employee transport lines',regTitle:'Register on a line',regHint:'Pick the line and boarding stop and enter your details. You appear on the line roster immediately.',fType:'Rider type',tEmp:'Elsewedy employee',tExt:'From outside',fLine:'Line',fStop:'Boarding stop',stopPh:'Type your boarding stop',fTime:'Boarding time',fName:'Name',fCode:'Code',fCodeOpt:'Code (optional)',fCompany:'Company',fDept:'Department',deptPh:'Type the department',companyNote:'Company: Elsewedy (automatic)',companyEmp:'Elsewedy',badgeExt:'external',fKind:'Status',companiesTitle:'Affiliated Elsewedy companies',compAdd:'Add',compPh:'New company name',confirmCompDel:'Remove this company from the list?',kFixed:'Fixed',kFlex:'Variable',kindNote:'Fixed: you ride the fixed first shift every day.\nVariable: you ride different shifts (rotating).',shift2:'Second shift',shift3:'Third shift',errStop2:'Enter the boarding stop for the second shift',errTime2:'Pick the boarding time for the second shift',errStop3:'Enter the boarding stop for the third shift',errTime3:'Pick the boarding time for the third shift',errLine2:'Pick the second-shift line',errLine3:'Pick the third-shift line',colLine2:'Shift-2 line',colStop2:'Shift-2 stop',colTime2:'Shift-2 time',colLine3:'Shift-3 line',colStop3:'Shift-3 stop',colTime3:'Shift-3 time',submit:'Register',done:'Registered ✔',again:'Register another employee',adminLogin:'Admin sign in',loginTitle:'Admin sign in',fUser:'Username',fPass:'Password',loginBtn:'Sign in',loginErr:'Wrong username or password',back:'Back to registration',sLines:'active lines',sRiders:'registered employees',sToday:'registered today',expAll:'Download all lines (Excel)',logout:'Sign out',foot:'ELSEWEDY ELECTRIC — Egytech Transport Lines',searchPh:'Search lines…',noMatch:'No line matches this name',pickLine:'— pick a line —',pickCompany:'Pick the company',pickStop:'— pick a stop —',fillAll:'Fill the required fields and pick the line and stop',dup:'This code is already registered on line: ',time:'Time',price:'Cycle price',stop:'Stop',line:'Line',active:'active',suspended:'suspended',riders:'employees',noRiders:'No employees registered on this line yet',expOne:'Excel',del:'Delete',suspend:'Suspend',activate:'Activate',confirmDel:'Delete this employee?',colCode:'Code',colName:'Name',colCompany:'Company',colDept:'Department',colStop:'Exact boarding stop',colTime:'Boarding time',colKind:'Status',errName:'Enter a valid name (3+ letters)',errCode:'Enter a valid code (digits only, 2+ digits)',errCompany:'Enter the company name',errStop:'Enter the boarding stop',errTime:'Pick the boarding time',errDept:'Enter the department',errLine:'Pick the line',timePh:'e.g. 07:30',pwTitle:'Change password',pwNewPh:'New password (6+ characters)',pwBtn:'Change',pwShort:'Password must be at least 6 characters',pwDone:'Password changed ✔',pwErr:'Something went wrong, try again',errRate:'Too many attempts from this device, wait a bit and retry',errTimeBad:'Invalid time: hour 0-23, minute 0-59',errNameTriple:'Enter the full triple name (3 words, each 2+ letters)',mClose:'Close',mEmpty:'Nothing to show',mStopsCount:'stops',mRidersCount:'employees',dlApp:'Download the app (Android)',iosNote:'On iPhone: open the site in Safari and choose "Add to Home Screen"'}
+  ar:{title:'خطوط سير العربيات',subtitle:'السويدي إيجيتك — تسجيل الموظفين في خطوط النقل',regTitle:'تسجيل في خط سير',regHint:'اختار الخط ومحطة الركوب واكتب بياناتك. هتظهر في قايمة الخط فورًا.',fType:'نوع الراكب',tEmp:'موظف بالسويدي',tExt:'من خارج الشركة',fLine:'خط السير',fStop:'محطة الركوب',stopPh:'اكتب محطة الركوب',fTime:'ميعاد الركوب',fName:'الاسم',fCode:'الكود',fCodeOpt:'الكود (اختياري)',fCompany:'الشركة',fDept:'القسم',deptPh:'اكتب القسم',companyNote:'الشركة: السويدي (تلقائي)',companyEmp:'السويدي',badgeExt:'خارجي',fKind:'الحالة',companiesTitle:'شركات السويدي التابعة',compAdd:'إضافة',compPh:'اسم الشركة الجديدة',confirmCompDel:'تمسح الشركة دي من القايمة؟',kFixed:'ثابت',kFlex:'متغير',kindNote:'ثابت: بتنزل وردية أولى ثابتة كل يوم.\nمتغير: بتنزل ورديات مختلفة (ورادي).',shift2:'الوردية التانية',shift3:'الوردية التالتة',errStop2:'اكتب محطة الركوب في الوردية التانية',errTime2:'اختار ميعاد الركوب في الوردية التانية',errStop3:'اكتب محطة الركوب في الوردية التالتة',errTime3:'اختار ميعاد الركوب في الوردية التالتة',errLine2:'اختار خط الوردية التانية',errLine3:'اختار خط الوردية التالتة',colLine2:'خط الوردية التانية',colStop2:'محطة الوردية التانية',colTime2:'ميعاد الوردية التانية',colLine3:'خط الوردية التالتة',colStop3:'محطة الوردية التالتة',colTime3:'ميعاد الوردية التالتة',submit:'تسجيل',done:'تم التسجيل ✔',again:'تسجيل موظف تاني',adminLogin:'دخول المسؤول',loginTitle:'دخول المسؤول',fUser:'اسم المستخدم',fPass:'كلمة السر',loginBtn:'دخول',loginErr:'بيانات الدخول غير صحيحة',back:'رجوع للتسجيل',sLines:'خط نشط',sRiders:'موظف مسجل',sToday:'سجل النهارده',expAll:'تنزيل Excel كل الخطوط',logout:'خروج',foot:'ELSEWEDY ELECTRIC — Egytech Transport Lines',searchPh:'ابحث عن الخط…',noMatch:'لا يوجد خط بهذا الاسم',pickLine:'— اختار الخط —',pickCompany:'اختار الشركة',pickStop:'— اختار المحطة —',fillAll:'املأ البيانات المطلوبة واختار الخط والمحطة',dup:'الكود ده مسجل قبل كده في خط: ',time:'الميعاد',price:'سعر الدورة',stop:'المحطة',line:'الخط',active:'شغال',suspended:'موقوف',riders:'موظف',noRiders:'لسه مفيش موظفين مسجلين في الخط ده',expOne:'Excel',del:'مسح',suspend:'إيقاف',activate:'تشغيل',confirmDel:'تمسح الموظف ده؟',colCode:'الكود',colName:'الاسم',colCompany:'الشركة',colDept:'القسم',colStop:'محطة الركوب بالتحديد',colTime:'ميعاد الركوب',colKind:'الحالة',errName:'اكتب اسم صحيح (٣ حروف على الأقل)',errCode:'اكتب كود صحيح (أرقام بس، رقمين على الأقل)',errCompany:'اكتب اسم الشركة',errStop:'اكتب محطة الركوب',errTime:'اختار ميعاد الركوب',errDept:'اكتب القسم',errLine:'اختار خط السير',timePh:'مثال: 07:30',pwTitle:'تغيير كلمة السر',pwNewPh:'كلمة السر الجديدة (٦ حروف أو أكتر)',pwBtn:'تغيير',pwShort:'كلمة السر لازم تكون ٦ حروف أو أكتر',pwDone:'اتغيرت كلمة السر ✔',pwErr:'حصل خطأ، جرب تاني',errRate:'محاولات كتير من الجهاز ده، استنى شوية وجرب تاني',errTimeBad:'الميعاد مش صحيح: الساعة من 0 لـ 23 والدقايق من 0 لـ 59',errNameTriple:'اكتب اسمك ثلاثي',edit:'تعديل',save:'حفظ',editTitle:'تعديل بيانات الموظف',dupWarn:'تنبيه: نفس الكود مسجل أكتر من مرة',printSheet:'طباعة كشف',searchResults:'نتايج البحث عن الموظفين',mClose:'إغلاق',mEmpty:'مفيش بيانات للعرض',mStopsCount:'محطة',mRidersCount:'موظف',dlApp:'تحميل التطبيق (أندرويد)',iosNote:'للآيفون: افتح الموقع في Safari واختار «إضافة إلى الشاشة الرئيسية»'},
+  en:{title:'Bus Line Registration',subtitle:'Elsewedy Egytech — employee transport lines',regTitle:'Register on a line',regHint:'Pick the line and boarding stop and enter your details. You appear on the line roster immediately.',fType:'Rider type',tEmp:'Elsewedy employee',tExt:'From outside',fLine:'Line',fStop:'Boarding stop',stopPh:'Type your boarding stop',fTime:'Boarding time',fName:'Name',fCode:'Code',fCodeOpt:'Code (optional)',fCompany:'Company',fDept:'Department',deptPh:'Type the department',companyNote:'Company: Elsewedy (automatic)',companyEmp:'Elsewedy',badgeExt:'external',fKind:'Status',companiesTitle:'Affiliated Elsewedy companies',compAdd:'Add',compPh:'New company name',confirmCompDel:'Remove this company from the list?',kFixed:'Fixed',kFlex:'Variable',kindNote:'Fixed: you ride the fixed first shift every day.\nVariable: you ride different shifts (rotating).',shift2:'Second shift',shift3:'Third shift',errStop2:'Enter the boarding stop for the second shift',errTime2:'Pick the boarding time for the second shift',errStop3:'Enter the boarding stop for the third shift',errTime3:'Pick the boarding time for the third shift',errLine2:'Pick the second-shift line',errLine3:'Pick the third-shift line',colLine2:'Shift-2 line',colStop2:'Shift-2 stop',colTime2:'Shift-2 time',colLine3:'Shift-3 line',colStop3:'Shift-3 stop',colTime3:'Shift-3 time',submit:'Register',done:'Registered ✔',again:'Register another employee',adminLogin:'Admin sign in',loginTitle:'Admin sign in',fUser:'Username',fPass:'Password',loginBtn:'Sign in',loginErr:'Wrong username or password',back:'Back to registration',sLines:'active lines',sRiders:'registered employees',sToday:'registered today',expAll:'Download all lines (Excel)',logout:'Sign out',foot:'ELSEWEDY ELECTRIC — Egytech Transport Lines',searchPh:'Search lines…',noMatch:'No line matches this name',pickLine:'— pick a line —',pickCompany:'Pick the company',pickStop:'— pick a stop —',fillAll:'Fill the required fields and pick the line and stop',dup:'This code is already registered on line: ',time:'Time',price:'Cycle price',stop:'Stop',line:'Line',active:'active',suspended:'suspended',riders:'employees',noRiders:'No employees registered on this line yet',expOne:'Excel',del:'Delete',suspend:'Suspend',activate:'Activate',confirmDel:'Delete this employee?',colCode:'Code',colName:'Name',colCompany:'Company',colDept:'Department',colStop:'Exact boarding stop',colTime:'Boarding time',colKind:'Status',errName:'Enter a valid name (3+ letters)',errCode:'Enter a valid code (digits only, 2+ digits)',errCompany:'Enter the company name',errStop:'Enter the boarding stop',errTime:'Pick the boarding time',errDept:'Enter the department',errLine:'Pick the line',timePh:'e.g. 07:30',pwTitle:'Change password',pwNewPh:'New password (6+ characters)',pwBtn:'Change',pwShort:'Password must be at least 6 characters',pwDone:'Password changed ✔',pwErr:'Something went wrong, try again',errRate:'Too many attempts from this device, wait a bit and retry',errTimeBad:'Invalid time: hour 0-23, minute 0-59',errNameTriple:'Enter the full triple name (3 words, each 2+ letters)',edit:'Edit',save:'Save',editTitle:'Edit employee',dupWarn:'Warning: the same code is registered more than once',printSheet:'Print sheet',searchResults:'Employee search results',mClose:'Close',mEmpty:'Nothing to show',mStopsCount:'stops',mRidersCount:'employees',dlApp:'Download the app (Android)',iosNote:'On iPhone: open the site in Safari and choose "Add to Home Screen"'}
 };
 let lang = localStorage.getItem('els-lang') || 'ar';
 const t = k => (I[lang] && I[lang][k]) || I.ar[k] || k;
@@ -591,6 +617,17 @@ $('compAddBtn').onclick = async () => {
 function renderAdmin(){
   const q = ($('admSearch').value || '').trim();
   const lines = ADMIN_DATA.lines.filter(l => !q || l.name.includes(q) || l.riders.some(r => r.name.includes(q) || r.code.includes(q)));
+  const counts = {};
+  ADMIN_DATA.lines.forEach(l => l.riders.forEach(r => { if (r.code) (counts[r.code] = counts[r.code] || []).push(r.name); }));
+  $('dupWarn').innerHTML = Object.keys(counts).filter(c => counts[c].length > 1).map(c => `<div class="dup-warn">\u26a0 ${t('dupWarn')}: \u00ab${esc(c)}\u00bb ${counts[c].map(esc).join(', ')}</div>`).join('');
+  const sr = $('searchRes');
+  if (q) {
+    const hits = [];
+    ADMIN_DATA.lines.forEach(l => l.riders.forEach(r => { if (r.name.includes(q) || (r.code && r.code.includes(q))) hits.push({ r, l }); }));
+    sr.innerHTML = hits.length ? `<div class="card" style="margin-bottom:12px"><div class="line-head"><span class="nm">${t('searchResults')} (${hits.length})</span></div>` + hits.map(h => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);flex-wrap:wrap"><span><b>${esc(h.r.name)}</b>${h.r.code ? ' \u2022 ' + esc(h.r.code) : ''} \u2022 ${esc(h.l.name)} \u2022 ${esc(h.r.stop)} \u2022 ${esc((h.r.time || '').slice(0, 5))}</span><span style="display:flex;gap:6px"><button class="btn small" data-edit="${h.r.id}">${t('edit')}</button><button class="btn small danger" data-del="${h.r.id}">${t('del')}</button></span></div>`).join('') + '</div>' : `<div class="card mut" style="margin-bottom:12px">${t('mEmpty')}</div>`;
+    sr.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { if (!confirm(t('confirmDel'))) return; await api('/api/admin/rider/delete', { id: b.dataset.del }); await loadAdmin(); });
+    sr.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { const h = hits.find(x => x.r.id === b.dataset.edit); if (h) openEdit(h.r); });
+  } else sr.innerHTML = '';
   const today = new Date().toDateString();
   $('stLines').textContent = ADMIN_DATA.lines.filter(l => l.active).length;
   $('stRiders').textContent = ADMIN_DATA.lines.reduce((n, l) => n + l.riders.length, 0);
@@ -606,6 +643,7 @@ function renderAdmin(){
       <div style="display:flex;gap:6px;align-items:center">
         <span class="count-pill">${l.riders.length} ${t('riders')}</span>
         <a class="btn small ghost" href="/api/admin/export.xlsx?line=${l.id}">${t('expOne')}</a>
+        <a class="btn small ghost" href="/api/admin/line/sheet?id=${l.id}" target="_blank">${t('printSheet')}</a>
         <button class="btn small ${l.active ? 'danger' : ''}" data-tg>${l.active ? t('suspend') : t('activate')}</button>
       </div></div>
       <div class="riders-box hidden"></div>`;
@@ -625,7 +663,7 @@ function renderRiders(box, l){
   let html = `<table><colgroup><col class="c-stop"><col class="c-time"><col class="c-name"><col class="c-code"><col class="c-comp"><col class="c-dept"><col class="c-kind"><col class="c-line2"><col class="c-stop2"><col class="c-time2"><col class="c-line3"><col class="c-stop3"><col class="c-time3"><col class="c-del"></colgroup><tr><th>${t('colStop')}</th><th>${t('colTime')}</th><th>${t('colName')}</th><th>${t('colCode')}</th><th>${t('colCompany')}</th><th>${t('colDept')}</th><th>${t('colKind')}</th><th>${t('colLine2')}</th><th>${t('colStop2')}</th><th>${t('colTime2')}</th><th>${t('colLine3')}</th><th>${t('colStop3')}</th><th>${t('colTime3')}</th><th></th></tr>`;
   l.riders.forEach(r => {
     html += `<tr><td>${esc(r.stop)}</td><td>${esc((r.time || '').slice(0,5))}</td><td>${esc(r.name)}</td><td>${esc(r.code) || '—'}</td><td>${esc(r.company||'')}</td><td>${esc(r.department||'')}</td><td>${kindTxt(r)}</td><td>${esc(r.line2||'')}</td><td>${esc(r.stop2||'')}</td><td>${esc((r.time2||'').slice(0,5))}</td><td>${esc(r.line3||'')}</td><td>${esc(r.stop3||'')}</td><td>${esc((r.time3||'').slice(0,5))}</td>
-      <td><button class="btn small danger" data-del="${r.id}">${t('del')}</button></td></tr>`;
+      <td style="white-space:nowrap"><button class="btn small" data-edit="${r.id}">${t('edit')}</button> <button class="btn small danger" data-del="${r.id}">${t('del')}</button></td></tr>`;
   });
   html += '</table><div class="rider-cards">';
   l.riders.forEach(r => {
@@ -639,7 +677,7 @@ function renderRiders(box, l){
       <div class="rc-row"><span class="k">${t('colKind')}</span><span class="v">${kindTxt(r)}</span></div>
       ${r.stop2 ? `<div class="rc-row"><span class="k">${t('shift2')}</span><span class="v">${esc(r.line2||'')} • ${esc(r.stop2)} • ${esc((r.time2||'').slice(0,5))}</span></div>` : ''}
       ${r.stop3 ? `<div class="rc-row"><span class="k">${t('shift3')}</span><span class="v">${esc(r.line3||'')} • ${esc(r.stop3)} • ${esc((r.time3||'').slice(0,5))}</span></div>` : ''}
-      <div class="rc-foot"><button class="btn small danger" data-del="${r.id}">${t('del')}</button></div>
+      <div class="rc-foot"><button class="btn small" data-edit="${r.id}">${t('edit')}</button><button class="btn small danger" data-del="${r.id}">${t('del')}</button></div>
     </div>`;
   });
   html += '</div>';
@@ -649,7 +687,45 @@ function renderRiders(box, l){
     await api('/api/admin/rider/delete', { id: b.dataset.del });
     await loadAdmin();
   });
+  box.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { const r = l.riders.find(x => x.id === b.dataset.edit); if (r) openEdit(r); });
 }
+/* ---------- edit rider ---------- */
+let EDIT_R = null;
+function openEdit(r){
+  EDIT_R = r;
+  $('edName').value = r.name || '';
+  $('edCode').value = r.code || '';
+  $('edCompany').innerHTML = (ADMIN_DATA.companies || []).map(c => `<option ${c === r.company ? 'selected' : ''}>${esc(c)}</option>`).join('');
+  $('edDept').value = r.department || '';
+  $('edStop').value = r.stop || '';
+  $('edTime').value = (r.time || '').slice(0, 5);
+  $('edKind').value = r.kind === 'flex' ? 'flex' : 'fixed';
+  $('edStop2').value = r.stop2 || ''; $('edTime2').value = (r.time2 || '').slice(0, 5);
+  $('edStop3').value = r.stop3 || ''; $('edTime3').value = (r.time3 || '').slice(0, 5);
+  $('edShifts').style.display = r.kind === 'flex' ? 'flex' : 'none';
+  $('edErr').classList.add('hidden');
+  $('editModal').classList.remove('hidden');
+}
+function closeEdit(){ $('editModal').classList.add('hidden'); EDIT_R = null; }
+$('editClose').onclick = closeEdit;
+$('editModal').addEventListener('click', e => { if (e.target === $('editModal')) closeEdit(); });
+$('edKind').onchange = () => { $('edShifts').style.display = $('edKind').value === 'flex' ? 'flex' : 'none'; };
+$('edCode').addEventListener('input', e => { const el = e.target; el.value = el.value.replace(/[\u0660-\u0669]/g, d => String(d.charCodeAt(0) - 0x660)).replace(/[\u06F0-\u06F9]/g, d => String(d.charCodeAt(0) - 0x6F0)).replace(/[^0-9]/g, ''); });
+['edTime', 'edTime2', 'edTime3'].forEach(id => $(id).addEventListener('blur', () => { const el = $(id); const n = normTime(el.value); if (n) el.value = n; }));
+$('edSave').onclick = async () => {
+  if (!EDIT_R) return;
+  const err = m => { const e = $('edErr'); e.textContent = m; e.classList.remove('hidden'); };
+  const payload = { id: EDIT_R.id, name: $('edName').value.trim(), code: $('edCode').value.trim(), company: $('edCompany').value, department: $('edDept').value.trim(), stopName: $('edStop').value.trim(), time: normTime($('edTime').value), kind: $('edKind').value, stop2: $('edStop2').value.trim(), time2: normTime($('edTime2').value), stop3: $('edStop3').value.trim(), time3: normTime($('edTime3').value) };
+  if (!validTripleName(payload.name)) return err(t('errNameTriple'));
+  if (!payload.time) return err(t('errTimeBad'));
+  if (payload.stopName.length < 2) return err(t('errStop'));
+  if (payload.kind === 'flex') {
+    if (payload.stop2.length < 2 || !payload.time2) return err(t('errStop2'));
+    if (payload.stop3.length < 2 || !payload.time3) return err(t('errStop3'));
+  }
+  await api('/api/admin/rider/update', payload);
+  closeEdit(); await loadAdmin();
+};
 $('admSearch').addEventListener('input', renderAdmin);
 
 /* ---------- boot ---------- */
