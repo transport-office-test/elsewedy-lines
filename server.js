@@ -23,7 +23,7 @@ let pgPool = null;
 
 function uid(prefix) { return prefix + crypto.randomBytes(8).toString('hex'); }
 
-const DEFAULT_COMPANIES = ['السويدي', 'المتحدة للصناعات', 'الألمونيوم', 'الهندسية', 'إيجيتك'];
+const DEFAULT_COMPANIES = ['السويدي', 'المتحدة للصناعات', 'الألمونيوم', 'الهندسية', 'إيجيتك', 'الاسلاك', 'بيدي وير', 'العربيه الكابلات', 'بروفيشنال'];
 
 function seedState() {
   const seed = JSON.parse(fs.readFileSync(SEED_FILE, 'utf8'));
