@@ -230,16 +230,27 @@ async function handle(req, res) {
     if (!line) return send(res, 400, { error: 'line' });
     const stop = line.stops.find(s => s.id === clean(b.stopId, 40));
     if (!stop) return send(res, 400, { error: 'stop' });
-    const name = cleanName(b.name), code = cleanCode(b.code), company = cleanName(b.company);
+    const name = cleanName(b.name);
+    const rtype = b.rtype === 'external' ? 'external' : 'employee';
+    let code = cleanCode(b.code || '');
+    let company;
     if (!validName(name)) return send(res, 400, { error: 'name' });
-    if (!validCode(code)) return send(res, 400, { error: 'code' });
-    if (company.length < 2) return send(res, 400, { error: 'company' });
-    const dup = state.riders.find(r => r.code === code);
-    if (dup) {
-      const dl = state.lines.find(l => l.id === dup.lineId);
-      return send(res, 409, { error: 'dup', line: dl ? dl.name : '' });
+    if (rtype === 'employee') {
+      if (!validCode(code)) return send(res, 400, { error: 'code' });
+      company = 'السويدي';
+    } else {
+      if (code && !validCode(code)) return send(res, 400, { error: 'code' });
+      company = cleanName(b.company);
+      if (company.length < 2) return send(res, 400, { error: 'company' });
     }
-    const rider = { id: uid('R'), lineId: line.id, stopId: stop.id, name, code, company, kind: b.kind === 'flex' ? 'flex' : 'fixed', createdAt: new Date().toISOString() };
+    if (code) {
+      const dup = state.riders.find(r => r.code && r.code === code);
+      if (dup) {
+        const dl = state.lines.find(l => l.id === dup.lineId);
+        return send(res, 409, { error: 'dup', line: dl ? dl.name : '' });
+      }
+    }
+    const rider = { id: uid('R'), lineId: line.id, stopId: stop.id, name, code, company, rtype, kind: b.kind === 'flex' ? 'flex' : 'fixed', createdAt: new Date().toISOString() };
     state.riders.push(rider); saveSoon();
     return send(res, 200, { ok: true, line: line.name, stop: stop.name, time: line.time, price: line.price });
   }
@@ -273,7 +284,7 @@ async function handle(req, res) {
       stops: l.stops.map(s => ({ id: s.id, name: s.name })),
       riders: state.riders.filter(r => r.lineId === l.id).map(r => {
         const st = l.stops.find(s => s.id === r.stopId);
-        return { id: r.id, name: r.name, code: r.code, company: r.company || '', stop: st ? st.name : '', stopPos: st ? st.position : 999, kind: r.kind, createdAt: r.createdAt };
+        return { id: r.id, name: r.name, code: r.code, company: r.company || '', stop: st ? st.name : '', stopPos: st ? st.position : 999, kind: r.kind, rtype: r.rtype || 'employee', createdAt: r.createdAt };
       }).sort((a, b) => a.stopPos - b.stopPos || a.createdAt.localeCompare(b.createdAt))
     }));
     return send(res, 200, { lines: out });
@@ -334,13 +345,13 @@ async function handle(req, res) {
     if (!needAdmin()) return;
     const lineId = u.searchParams.get('line') || '';
     const lines = lineId ? state.lines.filter(l => l.id === lineId) : state.lines.slice().sort((a, b) => a.position - b.position);
-    const rows = [['الكود', 'الاسم', 'الشركة', 'النقطه', 'التوقيت', 'سعر الدوره', 'اسم السائق', 'ID/ السائق', 'الخط', 'الحاله']];
+    const rows = [['الكود', 'الاسم', 'الشركة', 'النقطه', 'التوقيت', 'سعر الدوره', 'اسم السائق', 'ID/ السائق', 'الخط', 'الحاله', 'النوع']];
     for (const l of lines) {
       const riders = state.riders.filter(r => r.lineId === l.id);
-      if (!riders.length) { rows.push(['', '', '', l.stops[0] ? l.stops[0].name : '', l.time, l.price, l.driver, l.driverId, l.name, '']); continue; }
+      if (!riders.length) { rows.push(['', '', '', l.stops[0] ? l.stops[0].name : '', l.time, l.price, l.driver, l.driverId, l.name, '', '']); continue; }
       for (const r of riders) {
         const st = l.stops.find(s => s.id === r.stopId);
-        rows.push([r.code, r.name, r.company || '', st ? st.name : '', l.time, l.price, l.driver, l.driverId, l.name, r.kind === 'flex' ? 'متغير' : 'ثابت']);
+        rows.push([r.code || '', r.name, r.company || '', st ? st.name : '', l.time, l.price, l.driver, l.driverId, l.name, r.kind === 'flex' ? 'متغير' : 'ثابت', r.rtype === 'external' ? 'خارجي' : 'موظف سويدي']);
       }
     }
     const buf = buildXlsx(lineId && lines[0] ? lines[0].name : 'كل الخطوط', rows);
