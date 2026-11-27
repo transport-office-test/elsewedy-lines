@@ -245,9 +245,10 @@ async function handle(req, res) {
     if (!validName(name)) return send(res, 400, { error: 'name' });
     const company = cleanName(b.company);
     if (!state.companies.includes(company)) return send(res, 400, { error: 'company' });
-    const isProf = company === 'بروفيشنال'; // professional riders have no employee code
-    const code = isProf ? '' : cleanCode(b.code || '');
+    const isProf = company === 'بروفيشنال'; // professional riders have no employee code; they write the company they work for instead
+    const code = isProf ? cleanName(b.code || '') : cleanCode(b.code || '');
     if (!isProf && !validCode(code)) return send(res, 400, { error: 'code' });
+    if (isProf && code.length < 2) return send(res, 400, { error: 'code' });
     const department = cleanName(b.department);
     if (department.length < 2) return send(res, 400, { error: 'department' });
     const kind = b.kind === 'flex' ? 'flex' : 'fixed';
@@ -268,7 +269,7 @@ async function handle(req, res) {
       btime3 = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(b.time3 || '').trim()) ? String(b.time3).trim() : '';
       if (!btime3) return send(res, 400, { error: 'time3' });
     }
-    const dup = code && state.riders.find(r => r.code === code);
+    const dup = code && !isProf && state.riders.find(r => r.code === code && r.company !== 'بروفيشنال');
     if (dup) {
       const dl = state.lines.find(l => l.id === dup.lineId);
       return send(res, 409, { error: 'dup', line: dl ? dl.name : '' });
