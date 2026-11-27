@@ -253,6 +253,25 @@ function timeSortKey(v) {
 }
 
 /* ---------------- admin activity log ---------------- */
+function normStopKey(v) {
+  return String(v == null ? '' : v)
+    .replace(/[\u064B-\u0652\u0670\u0640]/g, '') // Arabic diacritics + dagger alef + tatweel
+    .replace(/[\u0623\u0625\u0622\u0671]/g, '\u0627') // alef variants -> alef
+    .replace(/\u0629/g, '\u0647') // teh marbuta -> heh
+    .replace(/\u0649/g, '\u064A') // alef maqsura -> yeh
+    .replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+// add an employee-typed station to a line if it is not already there (normalised dedupe)
+function ensureStop(line, stopName) {
+  const key = normStopKey(stopName);
+  if (!key || !line) return;
+  if (line.stops.some(st => normStopKey(st.name) === key)) return;
+  const pos = line.stops.reduce((m, st) => Math.max(m, st.position || 0), -1) + 1;
+  line.stops.push({ id: uid('S'), name: stopName, position: pos });
+  logAction('\u0625\u0636\u0627\u0641\u0629 \u0645\u063D\u0637\u0629', { name: '', code: '', lineId: line.id }, stopName);
+}
+
 function logAction(action, r, details) {
   if (!Array.isArray(state.log)) state.log = [];
   const lineName = (state.lines.find(l => l.id === r.lineId) || {}).name || '';
@@ -294,15 +313,16 @@ async function handle(req, res) {
     if (department.length < 2) return send(res, 400, { error: 'department' });
     const kind = b.kind === 'flex' ? 'flex' : 'fixed';
     let line2Name = '', line2Id = '', stop2 = '', btime2 = '', line3Name = '', line3Id = '', stop3 = '', btime3 = '';
+    let l2 = null, l3 = null;
     if (kind === 'flex') {
-      const l2 = state.lines.find(l => l.id === clean(b.line2Id, 40) && l.active);
+      l2 = state.lines.find(l => l.id === clean(b.line2Id, 40) && l.active);
       if (!l2) return send(res, 400, { error: 'line2' });
       line2Id = l2.id; line2Name = l2.name;
       stop2 = cleanName(b.stop2);
       if (stop2.length < 2) return send(res, 400, { error: 'stop2' });
       btime2 = cleanTimeText(b.time2);
       if (!btime2) return send(res, 400, { error: 'time2' });
-      const l3 = state.lines.find(l => l.id === clean(b.line3Id, 40) && l.active);
+      l3 = state.lines.find(l => l.id === clean(b.line3Id, 40) && l.active);
       if (!l3) return send(res, 400, { error: 'line3' });
       line3Id = l3.id; line3Name = l3.name;
       stop3 = cleanName(b.stop3);
@@ -316,6 +336,9 @@ async function handle(req, res) {
       return send(res, 409, { error: 'dup', line: dl ? dl.name : '' });
     }
     const rider = { id: uid('R'), lineId: line.id, stopId: '', stopName, time: btime, name, code, company, department, rtype: 'employee', kind, line2Id, stop2, time2: btime2, line3Id, stop3, time3: btime3, createdAt: new Date().toISOString() };
+    ensureStop(line, stopName);
+    if (l2) ensureStop(l2, stop2);
+    if (l3) ensureStop(l3, stop3);
     state.riders.push(rider); saveSoon();
     return send(res, 200, { ok: true, line: line.name, stop: stopName, time: btime, line2: line2Name, stop2, time2: btime2, line3: line3Name, stop3, time3: btime3 });
   }
@@ -387,7 +410,6 @@ async function handle(req, res) {
     if (name.length < 2) return send(res, 400, { error: 'name' });
     if (state.lines.some(l => String(l.name).trim() === name)) return send(res, 409, { error: 'dup' });
     const stops = (Array.isArray(b.stops) ? b.stops : []).map(x => cleanName(x)).filter(x => x.length >= 2).slice(0, 60);
-    if (!stops.length) return send(res, 400, { error: 'stops' });
     const pos = state.lines.reduce((m, l) => Math.max(m, l.position || 0), -1) + 1;
     const line = { id: uid('L'), name, time: '', price: '', driver: '', driverId: '', active: true, position: pos, capacity: 0, stops: stops.map((sn, j) => ({ id: uid('S'), name: sn, position: j })) };
     state.lines.push(line); saveSoon();
