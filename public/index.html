@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#0A0E1A">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <title>خطوط السير — السويدي إيجيتك</title>
 <style>
 :root{
@@ -500,6 +501,8 @@ $('admSearch').addEventListener('input', renderAdmin);
   show('reg');
   loadPublic().catch(() => {});
 })();
+/* PWA: register the install-only service worker (no caching, network always) */
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 </script>
 </body>
 </html>
