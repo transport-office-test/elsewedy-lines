@@ -114,11 +114,6 @@ footer{margin-top:26px;text-align:center;color:var(--ink2);font-size:11.5px}
     <div class="card">
       <h2 data-i18n="regTitle">تسجيل موظف في خط سير</h2>
       <div class="mut" data-i18n="regHint">اختار الخط ومحطة الركوب، واكتب اسمك وكودك. هتظهر في قايمة الخط فورًا.</div>
-      <label data-i18n="fType">نوع الراكب</label>
-      <div class="kind-row">
-        <div class="opt on" id="typeEmp" data-i18n="tEmp">موظف بالسويدي</div>
-        <div class="opt" id="typeExt" data-i18n="tExt">من خارج الشركة</div>
-      </div>
       <label data-i18n="fLine">خط السير</label>
       <input class="search" id="lineSearch" data-i18n-ph="searchPh" placeholder="ابحث عن الخط…">
       <select id="lineSel" size="7" style="height:auto"></select>
@@ -135,13 +130,11 @@ footer{margin-top:26px;text-align:center;color:var(--ink2);font-size:11.5px}
       <div id="companyRow">
         <label data-i18n="fCompany">الشركة</label>
         <select id="companySel"></select>
-        <input id="companyIn" class="hidden">
       </div>
       <div id="deptRow">
         <label data-i18n="fDept">القسم</label>
         <input id="deptIn" data-i18n-ph="deptPh" placeholder="اكتب القسم">
       </div>
-      <div class="mut" id="companyNote" data-i18n="companyNote">الشركة: السويدي (تلقائي)</div>
       <label data-i18n="fKind">الحالة</label>
       <div class="kind-row">
         <div class="opt on" id="kindFixed" data-i18n="kFixed">ثابت</div>
@@ -214,7 +207,6 @@ function applyLang(){
   document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
   $('langBtn').textContent = lang === 'ar' ? 'EN' : 'ع';
-  applyType();
   if (LINES.length) fillLines($('lineSearch').value);
   if (ADMIN_DATA) renderAdmin();
 }
@@ -261,39 +253,22 @@ function curLine(){ const id = $('lineSel').value; return LINES.find(l => l.id =
 $('lineSearch').addEventListener('input', e => fillLines(e.target.value));
 $('kindFixed').onclick = () => { kind = 'fixed'; $('kindFixed').classList.add('on'); $('kindFlex').classList.remove('on'); };
 $('kindFlex').onclick = () => { kind = 'flex'; $('kindFlex').classList.add('on'); $('kindFixed').classList.remove('on'); };
-let rtype = 'employee';
-function applyType(){
-  const emp = rtype === 'employee';
-  $('typeEmp').classList.toggle('on', emp);
-  $('typeExt').classList.toggle('on', !emp);
-  $('companyRow').classList.remove('hidden');
-  $('companyNote').classList.add('hidden');
-  $('codeRow').classList.toggle('hidden', !emp);
-  $('codeLbl').textContent = t('fCode');
-  $('companySel').classList.toggle('hidden', !emp);
-  $('companyIn').classList.toggle('hidden', emp);
-  $('deptRow').classList.toggle('hidden', !emp);
-}
-$('typeEmp').onclick = () => { rtype = 'employee'; applyType(); };
-$('typeExt').onclick = () => { rtype = 'external'; applyType(); };
 $('regBtn').onclick = async () => {
   const err = $('regErr'); err.classList.add('hidden');
   const l = curLine(), stopName = $('stopIn').value.trim(), btime = $('timeIn').value, name = $('nameIn').value.trim(), code = $('codeIn').value.trim();
-  const emp = rtype === 'employee';
-  const company = emp ? $('companySel').value : $('companyIn').value.trim();
-  const department = emp ? $('deptIn').value.trim() : '';
-  const missing = !l || !stopName || !btime || !name || !company || (emp && (!code || !department));
-  const outCode = emp ? code : '';
+  const company = $('companySel').value;
+  const department = $('deptIn').value.trim();
+  const missing = !l || !stopName || !btime || !name || !company || !code || !department;
   if (missing) { err.textContent = t('fillAll'); err.classList.remove('hidden'); return; }
   $('regBtn').disabled = true;
   try {
-    const j = await api('/api/public/register', { lineId: l.id, stopName, time: btime, name, code: outCode, company, department, kind, rtype });
+    const j = await api('/api/public/register', { lineId: l.id, stopName, time: btime, name, code, company, department, kind });
     $('doneInfo').innerHTML = `<div>${t('line')}: <b>${esc(j.line)}</b></div><div>${t('stop')}: <b>${esc(j.stop)}</b></div>` +
       (j.time ? `<div>${t('time')}: <b>${esc(j.time.slice(0,5))}</b></div>` : '') +
       (j.price ? `<div>${t('price')}: <b>${esc(j.price)}</b></div>` : '');
     $('doneCard').classList.remove('hidden');
     $('regBtn').closest('.card').classList.add('hidden');
-    $('nameIn').value = ''; $('codeIn').value = ''; $('companyIn').value = ''; $('deptIn').value = ''; $('stopIn').value = ''; $('timeIn').value = '';
+    $('nameIn').value = ''; $('codeIn').value = ''; $('deptIn').value = ''; $('stopIn').value = ''; $('timeIn').value = '';
   } catch (e) {
     const code = e.payload && e.payload.error;
     err.textContent = e.status === 409 ? t('dup') + (e.payload.line || '')
@@ -397,16 +372,15 @@ function renderAdmin(){
 function renderRiders(box, l){
   if (!l.riders.length) { box.innerHTML = `<div class="mut">${t('noRiders')}</div>`; return; }
   const kindTxt = r => r.kind === 'flex' ? t('kFlex') : t('kFixed');
-  const extBadge = r => r.rtype === 'external' ? `<span class="type-badge">${t('badgeExt')}</span>` : '';
   let html = `<table><colgroup><col class="c-stop"><col class="c-time"><col class="c-name"><col class="c-code"><col class="c-comp"><col class="c-dept"><col class="c-kind"><col class="c-del"></colgroup><tr><th>${t('colStop')}</th><th>${t('colTime')}</th><th>${t('colName')}</th><th>${t('colCode')}</th><th>${t('colCompany')}</th><th>${t('colDept')}</th><th>${t('colKind')}</th><th></th></tr>`;
   l.riders.forEach(r => {
-    html += `<tr><td>${esc(r.stop)}</td><td>${esc((r.time || l.time || '').slice(0,5))}</td><td>${esc(r.name)} ${extBadge(r)}</td><td>${esc(r.code) || '—'}</td><td>${esc(r.company||'')}</td><td>${esc(r.department||'')}</td><td>${kindTxt(r)}</td>
+    html += `<tr><td>${esc(r.stop)}</td><td>${esc((r.time || l.time || '').slice(0,5))}</td><td>${esc(r.name)}</td><td>${esc(r.code) || '—'}</td><td>${esc(r.company||'')}</td><td>${esc(r.department||'')}</td><td>${kindTxt(r)}</td>
       <td><button class="btn small danger" data-del="${r.id}">${t('del')}</button></td></tr>`;
   });
   html += '</table><div class="rider-cards">';
   l.riders.forEach(r => {
     html += `<div class="rider-card">
-      <div class="rc-name">${esc(r.name)} ${extBadge(r)}</div>
+      <div class="rc-name">${esc(r.name)}</div>
       <div class="rc-row"><span class="k">${t('colStop')}</span><span class="v">${esc(r.stop)}</span></div>
       <div class="rc-row"><span class="k">${t('colTime')}</span><span class="v">${esc((r.time || l.time || '').slice(0,5))}</span></div>
       <div class="rc-row"><span class="k">${t('colCode')}</span><span class="v">${esc(r.code) || '—'}</span></div>
