@@ -172,24 +172,30 @@ function crc32(buf) {
   for (let i = 0; i < buf.length; i++) c = (c >>> 8) ^ table[(c ^ buf[i]) & 0xFF];
   return (c ^ -1) >>> 0;
 }
-function buildXlsx(sheetName, rows) {
-  // rows: array of arrays of strings
+function buildXlsx(sheetName, rows, opts) {
+  // rows: array of arrays of strings; opts: { widths: [..], centerCols: [colIndex, ..] }
+  const widths = (opts && opts.widths) || [];
+  const centerCols = (opts && opts.centerCols) || [];
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   let sheetRows = '';
   rows.forEach((r, ri) => {
-    sheetRows += `<row r="${ri + 1}">` + r.map((c, ci) => {
+    const isHead = ri === 0;
+    sheetRows += `<row r="${ri + 1}"${isHead ? ' ht="32" customHeight="1"' : ''}>` + r.map((c, ci) => {
       const ref = String.fromCharCode(65 + ci) + (ri + 1);
-      return `<c r="${ref}" t="inlineStr"><is><t>${esc(c)}</t></is></c>`;
+      const st = isHead ? 1 : (centerCols.indexOf(ci) !== -1 ? 3 : 2);
+      return `<c r="${ref}" s="${st}" t="inlineStr"><is><t>${esc(c)}</t></is></c>`;
     }).join('') + '</row>';
   });
-  const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView rightToLeft="1" workbookViewId="0"/></sheetViews><sheetData>${sheetRows}</sheetData></worksheet>`;
+  const colsXml = widths.length ? `<cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols>` : '';
+  const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView rightToLeft="1" showGridLines="1" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>${colsXml}<sheetData>${sheetRows}</sheetData></worksheet>`;
+  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF12204A"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFB0B7C3"/></left><right style="thin"><color rgb="FFB0B7C3"/></right><top style="thin"><color rgb="FFB0B7C3"/></top><bottom style="thin"><color rgb="FFB0B7C3"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
   const wbXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${esc(sheetName).slice(0, 31)}" sheetId="1" r:id="rId1"/></sheets></workbook>`;
-  const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`;
+  const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
   const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
-  const ctXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`;
+  const ctXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
   const files = [
     ['[Content_Types].xml', ctXml], ['_rels/.rels', rootRels],
-    ['xl/workbook.xml', wbXml], ['xl/_rels/workbook.xml.rels', relsXml], ['xl/worksheets/sheet1.xml', sheetXml]
+    ['xl/workbook.xml', wbXml], ['xl/_rels/workbook.xml.rels', relsXml], ['xl/worksheets/sheet1.xml', sheetXml], ['xl/styles.xml', stylesXml]
   ];
   const parts = []; let offset = 0; const central = [];
   for (const [name, content] of files) {
@@ -245,27 +251,31 @@ async function handle(req, res) {
     const department = cleanName(b.department);
     if (department.length < 2) return send(res, 400, { error: 'department' });
     const kind = b.kind === 'flex' ? 'flex' : 'fixed';
-    let second = null;
+    let line2Name = '', line2Id = '', stop2 = '', btime2 = '', line3Name = '', line3Id = '', stop3 = '', btime3 = '';
     if (kind === 'flex') {
-      const s2 = b.second || {};
-      const line2 = state.lines.find(l => l.id === clean(s2.lineId, 40) && l.active);
-      if (!line2 || line2.id === line.id) return send(res, 400, { error: 'line2' });
-      const stopName2 = cleanName(s2.stopName);
-      if (stopName2.length < 2) return send(res, 400, { error: 'stop2' });
-      const btime2 = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(s2.time || '').trim()) ? String(s2.time).trim() : '';
+      const l2 = state.lines.find(l => l.id === clean(b.line2Id, 40) && l.active);
+      if (!l2) return send(res, 400, { error: 'line2' });
+      line2Id = l2.id; line2Name = l2.name;
+      stop2 = cleanName(b.stop2);
+      if (stop2.length < 2) return send(res, 400, { error: 'stop2' });
+      btime2 = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(b.time2 || '').trim()) ? String(b.time2).trim() : '';
       if (!btime2) return send(res, 400, { error: 'time2' });
-      second = { line: line2, stopName: stopName2, time: btime2 };
+      const l3 = state.lines.find(l => l.id === clean(b.line3Id, 40) && l.active);
+      if (!l3) return send(res, 400, { error: 'line3' });
+      line3Id = l3.id; line3Name = l3.name;
+      stop3 = cleanName(b.stop3);
+      if (stop3.length < 2) return send(res, 400, { error: 'stop3' });
+      btime3 = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(b.time3 || '').trim()) ? String(b.time3).trim() : '';
+      if (!btime3) return send(res, 400, { error: 'time3' });
     }
     const dup = code && state.riders.find(r => r.code === code);
     if (dup) {
       const dl = state.lines.find(l => l.id === dup.lineId);
       return send(res, 409, { error: 'dup', line: dl ? dl.name : '' });
     }
-    const rider = { id: uid('R'), lineId: line.id, stopId: '', stopName, time: btime, name, code, company, department, rtype: 'employee', kind, createdAt: new Date().toISOString() };
-    state.riders.push(rider);
-    if (second) state.riders.push({ id: uid('R'), lineId: second.line.id, stopId: '', stopName: second.stopName, time: second.time, name, code, company, department, rtype: 'employee', kind, createdAt: rider.createdAt });
-    saveSoon();
-    return send(res, 200, { ok: true, line: line.name, stop: stopName, time: btime, line2: second ? second.line.name : '', stop2: second ? second.stopName : '', time2: second ? second.time : '' });
+    const rider = { id: uid('R'), lineId: line.id, stopId: '', stopName, time: btime, name, code, company, department, rtype: 'employee', kind, line2Id, stop2, time2: btime2, line3Id, stop3, time3: btime3, createdAt: new Date().toISOString() };
+    state.riders.push(rider); saveSoon();
+    return send(res, 200, { ok: true, line: line.name, stop: stopName, time: btime, line2: line2Name, stop2, time2: btime2, line3: line3Name, stop3, time3: btime3 });
   }
 
   // auth
@@ -298,7 +308,9 @@ async function handle(req, res) {
       stops: l.stops.map(s => ({ id: s.id, name: s.name })),
       riders: state.riders.filter(r => r.lineId === l.id).map(r => {
         const st = l.stops.find(s => s.id === r.stopId);
-        return { id: r.id, name: r.name, code: r.code, company: r.company || '', department: r.department || '', stop: r.stopName || (st ? st.name : ''), stopPos: st ? st.position : 999, kind: r.kind, rtype: r.rtype || 'employee', time: r.time || '', createdAt: r.createdAt };
+        const l2n = (state.lines.find(x => x.id === r.line2Id) || {}).name || '';
+        const l3n = (state.lines.find(x => x.id === r.line3Id) || {}).name || '';
+        return { id: r.id, name: r.name, code: r.code, company: r.company || '', department: r.department || '', stop: r.stopName || (st ? st.name : ''), stopPos: st ? st.position : 999, kind: r.kind, rtype: r.rtype || 'employee', time: r.time || '', line2: l2n, stop2: r.stop2 || '', time2: r.time2 || '', line3: l3n, stop3: r.stop3 || '', time3: r.time3 || '', createdAt: r.createdAt };
       }).sort((a, b) => a.stopPos - b.stopPos || a.createdAt.localeCompare(b.createdAt))
     }));
     return send(res, 200, { lines: out, companies: state.companies });
@@ -381,16 +393,18 @@ async function handle(req, res) {
     if (!needAdmin()) return;
     const lineId = u.searchParams.get('line') || '';
     const lines = lineId ? state.lines.filter(l => l.id === lineId) : state.lines.slice().sort((a, b) => a.position - b.position);
-    const rows = [['الخط', 'محطة الركوب بالتحديد', 'ميعاد الركوب', 'الاسم', 'الشركة', 'الكود', 'القسم', 'الحاله']];
+    const rows = [['الخط', 'محطة الركوب بالتحديد', 'ميعاد الركوب', 'الاسم', 'الشركة', 'الكود', 'القسم', 'الحاله', 'خط الوردية التانية', 'محطة الوردية التانية', 'ميعاد الوردية التانية', 'خط الوردية التالتة', 'محطة الوردية التالتة', 'ميعاد الوردية التالتة']];
     for (const l of lines) {
       const riders = state.riders.filter(r => r.lineId === l.id);
-      if (!riders.length) { rows.push([l.name, '', '', '', '', '', '', '']); continue; }
+      if (!riders.length) { rows.push([l.name, '', '', '', '', '', '', '', '', '', '', '', '', '', '']); continue; }
       for (const r of riders) {
         const st = l.stops.find(s => s.id === r.stopId);
-        rows.push([l.name, r.stopName || (st ? st.name : ''), r.time || '', r.name, r.company || '', r.code || '', r.department || '', r.kind === 'flex' ? 'متغير' : 'ثابت']);
+        const l2n = (state.lines.find(x => x.id === r.line2Id) || {}).name || '';
+        const l3n = (state.lines.find(x => x.id === r.line3Id) || {}).name || '';
+        rows.push([l.name, r.stopName || (st ? st.name : ''), r.time || '', r.name, r.company || '', r.code || '', r.department || '', r.kind === 'flex' ? 'متغير' : 'ثابت', l2n, r.stop2 || '', r.time2 || '', l3n, r.stop3 || '', r.time3 || '']);
       }
     }
-    const buf = buildXlsx(lineId && lines[0] ? lines[0].name : 'كل الخطوط', rows);
+    const buf = buildXlsx(lineId && lines[0] ? lines[0].name : 'كل الخطوط', rows, { widths: [26, 22, 10, 20, 14, 8, 14, 8, 22, 18, 12, 22, 18, 12], centerCols: [2, 5, 7, 10, 13] });
     res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="lines.xlsx"` });
     return res.end(buf);
   }
