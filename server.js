@@ -177,10 +177,20 @@ function makeSheetXml(rows, opts) {
   const widths = (opts && opts.widths) || [];
   const centerCols = (opts && opts.centerCols) || [];
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const estLines = (c, w) => {
+    const s = String(c == null ? '' : c);
+    if (!s) return 1;
+    const per = Math.max(4, Math.floor((w || 12) - 2));
+    let len = 0;
+    for (const ch of s) len += /[0-9a-zA-Z .:'\-]/.test(ch) ? 1 : 1.15;
+    return Math.max(1, Math.ceil(len / per));
+  };
   let sheetRows = '';
   rows.forEach((r, ri) => {
     const isHead = ri === 0;
-    sheetRows += `<row r="${ri + 1}"${isHead ? ' ht="32" customHeight="1"' : ''}>` + r.map((c, ci) => {
+    const lines = isHead ? 1 : Math.max.apply(null, r.map((c, ci) => estLines(c, widths[ci])));
+    const htAttr = isHead ? ' ht="32" customHeight="1"' : (lines > 1 ? ` ht="${Math.round(lines * 14.5 + 4)}" customHeight="1"` : '');
+    sheetRows += `<row r="${ri + 1}"${htAttr}>` + r.map((c, ci) => {
       const ref = String.fromCharCode(65 + ci) + (ri + 1);
       const st = isHead ? 1 : (centerCols.indexOf(ci) !== -1 ? 3 : 2);
       return `<c r="${ref}" s="${st}" t="inlineStr"><is><t>${esc(c)}</t></is></c>`;
