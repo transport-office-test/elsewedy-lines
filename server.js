@@ -244,14 +244,28 @@ async function handle(req, res) {
     if (!isProf && !validCode(code)) return send(res, 400, { error: 'code' });
     const department = cleanName(b.department);
     if (department.length < 2) return send(res, 400, { error: 'department' });
+    const kind = b.kind === 'flex' ? 'flex' : 'fixed';
+    let second = null;
+    if (kind === 'flex') {
+      const s2 = b.second || {};
+      const line2 = state.lines.find(l => l.id === clean(s2.lineId, 40) && l.active);
+      if (!line2 || line2.id === line.id) return send(res, 400, { error: 'line2' });
+      const stopName2 = cleanName(s2.stopName);
+      if (stopName2.length < 2) return send(res, 400, { error: 'stop2' });
+      const btime2 = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(s2.time || '').trim()) ? String(s2.time).trim() : '';
+      if (!btime2) return send(res, 400, { error: 'time2' });
+      second = { line: line2, stopName: stopName2, time: btime2 };
+    }
     const dup = code && state.riders.find(r => r.code === code);
     if (dup) {
       const dl = state.lines.find(l => l.id === dup.lineId);
       return send(res, 409, { error: 'dup', line: dl ? dl.name : '' });
     }
-    const rider = { id: uid('R'), lineId: line.id, stopId: '', stopName, time: btime, name, code, company, department, rtype: 'employee', kind: b.kind === 'flex' ? 'flex' : 'fixed', createdAt: new Date().toISOString() };
-    state.riders.push(rider); saveSoon();
-    return send(res, 200, { ok: true, line: line.name, stop: stopName, time: btime });
+    const rider = { id: uid('R'), lineId: line.id, stopId: '', stopName, time: btime, name, code, company, department, rtype: 'employee', kind, createdAt: new Date().toISOString() };
+    state.riders.push(rider);
+    if (second) state.riders.push({ id: uid('R'), lineId: second.line.id, stopId: '', stopName: second.stopName, time: second.time, name, code, company, department, rtype: 'employee', kind, createdAt: rider.createdAt });
+    saveSoon();
+    return send(res, 200, { ok: true, line: line.name, stop: stopName, time: btime, line2: second ? second.line.name : '', stop2: second ? second.stopName : '', time2: second ? second.time : '' });
   }
 
   // auth
