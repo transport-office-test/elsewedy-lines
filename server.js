@@ -256,7 +256,8 @@ async function handle(req, res) {
   // auth
   if (p === '/api/login' && req.method === 'POST') {
     const b = await readBody(req);
-    const user = state.users.find(x => x.username === clean(b.username, 60));
+    const uname = clean(b.username, 60).toLowerCase();
+    const user = state.users.find(x => String(x.username || '').trim().toLowerCase() === uname);
     if (!user || !verifyPw(b.password || '', user.passHash)) return send(res, 401, { error: 'bad' });
     const t = newSession(user.id);
     return send(res, 200, { ok: true, name: user.username }, { 'Set-Cookie': `sid=${t}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 3600}; Secure` });
