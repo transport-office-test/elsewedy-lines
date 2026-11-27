@@ -129,9 +129,10 @@ function cleanName(v) {
   return s;
 }
 function validName(s) {
-  if (s.length < 3) return false;
-  const letters = (s.match(/[\u0600-\u06FFa-zA-Z]/g) || []).length;
-  return letters >= 2;
+  // triple name required: at least 3 words, each word a real word (2+ letters)
+  const words = s.split(' ').filter(Boolean);
+  if (words.length < 3) return false;
+  return words.every(w => (w.match(/[\u0600-\u06FFa-zA-Z]/g) || []).length >= 2);
 }
 const AR_DIGITS = { '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9', '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4', '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9' };
 function cleanCode(v) {
