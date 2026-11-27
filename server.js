@@ -364,13 +364,13 @@ async function handle(req, res) {
     if (!needAdmin()) return;
     const lineId = u.searchParams.get('line') || '';
     const lines = lineId ? state.lines.filter(l => l.id === lineId) : state.lines.slice().sort((a, b) => a.position - b.position);
-    const rows = [['الكود', 'الاسم', 'الشركة', 'القسم', 'النقطه', 'التوقيت', 'سعر الدوره', 'اسم السائق', 'ID/ السائق', 'الخط', 'الحاله', 'النوع']];
+    const rows = [['الخط', 'محطة الركوب بالتحديد', 'ميعاد الركوب', 'الاسم', 'الكود', 'الشركة', 'القسم', 'الحاله']];
     for (const l of lines) {
       const riders = state.riders.filter(r => r.lineId === l.id);
-      if (!riders.length) { rows.push(['', '', '', '', l.stops[0] ? l.stops[0].name : '', l.time, l.price, l.driver, l.driverId, l.name, '', '']); continue; }
+      if (!riders.length) { rows.push([l.name, '', '', '', '', '', '', '']); continue; }
       for (const r of riders) {
         const st = l.stops.find(s => s.id === r.stopId);
-        rows.push([r.code || '', r.name, r.company || '', r.department || '', r.stopName || (st ? st.name : ''), r.time || l.time, l.price, l.driver, l.driverId, l.name, r.kind === 'flex' ? 'متغير' : 'ثابت', r.rtype === 'external' ? 'خارجي' : 'موظف سويدي']);
+        rows.push([l.name, r.stopName || (st ? st.name : ''), r.time || l.time, r.name, r.code || '', r.company || '', r.department || '', r.kind === 'flex' ? 'متغير' : 'ثابت']);
       }
     }
     const buf = buildXlsx(lineId && lines[0] ? lines[0].name : 'كل الخطوط', rows);
