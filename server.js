@@ -380,6 +380,33 @@ async function handle(req, res) {
     return send(res, 200, { ok: true, companies: state.companies });
   }
 
+  if (p === '/api/admin/line/add' && req.method === 'POST') {
+    if (!needAdmin()) return;
+    const b = await readBody(req);
+    const name = clean(b.name, 120);
+    if (name.length < 2) return send(res, 400, { error: 'name' });
+    if (state.lines.some(l => String(l.name).trim() === name)) return send(res, 409, { error: 'dup' });
+    const stops = (Array.isArray(b.stops) ? b.stops : []).map(x => cleanName(x)).filter(x => x.length >= 2).slice(0, 60);
+    if (!stops.length) return send(res, 400, { error: 'stops' });
+    const pos = state.lines.reduce((m, l) => Math.max(m, l.position || 0), -1) + 1;
+    const line = { id: uid('L'), name, time: '', price: '', driver: '', driverId: '', active: true, position: pos, capacity: 0, stops: stops.map((sn, j) => ({ id: uid('S'), name: sn, position: j })) };
+    state.lines.push(line); saveSoon();
+    logAction('إضافة خط', { name: '', code: '', lineId: line.id }, stops.length + ' محطة');
+    return send(res, 200, { ok: true, id: line.id });
+  }
+
+  if (p === '/api/admin/line/delete' && req.method === 'POST') {
+    if (!needAdmin()) return;
+    const b = await readBody(req);
+    const lid = clean(b.id, 40);
+    const i = state.lines.findIndex(x => x.id === lid);
+    if (i < 0) return send(res, 404, { error: 'nf' });
+    if (state.riders.some(r => r.lineId === lid || r.line2Id === lid || r.line3Id === lid)) return send(res, 400, { error: 'hasriders' });
+    logAction('حذف خط', { name: '', code: '', lineId: lid }, '');
+    state.lines.splice(i, 1); saveSoon();
+    return send(res, 200, { ok: true });
+  }
+
   if (p === '/api/admin/line/toggle' && req.method === 'POST') {
     if (!needAdmin()) return;
     const b = await readBody(req);
