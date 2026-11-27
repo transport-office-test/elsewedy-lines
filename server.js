@@ -139,7 +139,7 @@ function cleanCode(v) {
   return String(v == null ? '' : v).replace(/[٠-٩۰-۹]/g, d => AR_DIGITS[d])
     .replace(/\s+/g, '').replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 20);
 }
-function validCode(s) { return s.length >= 2 && /[0-9A-Z\u0600-\u06FF]/.test(s); }
+function validCode(s) { return /^[0-9]{2,20}$/.test(s); } // digits only; Arabic-Indic digits already converted by cleanCode
 
 /* per-IP rate limit for public registration (60 per 10 min — generous on purpose:
    employees may register together from one office PC or shared company network) */
