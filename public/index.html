@@ -252,7 +252,8 @@ function applyType(){
   $('typeExt').classList.toggle('on', !emp);
   $('companyRow').classList.toggle('hidden', emp);
   $('companyNote').classList.toggle('hidden', !emp);
-  $('codeLbl').textContent = t(emp ? 'fCode' : 'fCodeOpt');
+  $('codeRow').classList.toggle('hidden', !emp);
+  $('codeLbl').textContent = t('fCode');
 }
 $('typeEmp').onclick = () => { rtype = 'employee'; applyType(); };
 $('typeExt').onclick = () => { rtype = 'external'; applyType(); };
@@ -260,10 +261,11 @@ $('regBtn').onclick = async () => {
   const err = $('regErr'); err.classList.add('hidden');
   const l = curLine(), stopId = $('stopSel').value, name = $('nameIn').value.trim(), code = $('codeIn').value.trim(), company = $('companyIn').value.trim();
   const missing = !l || !stopId || !name || (rtype === 'employee' ? !code : !company);
+  const outCode = rtype === 'employee' ? code : '';
   if (missing) { err.textContent = t('fillAll'); err.classList.remove('hidden'); return; }
   $('regBtn').disabled = true;
   try {
-    const j = await api('/api/public/register', { lineId: l.id, stopId, name, code, company, kind, rtype });
+    const j = await api('/api/public/register', { lineId: l.id, stopId, name, code: outCode, company, kind, rtype });
     $('doneInfo').innerHTML = `<div>${t('line')}: <b>${esc(j.line)}</b></div><div>${t('stop')}: <b>${esc(j.stop)}</b></div>` +
       (j.time ? `<div>${t('time')}: <b>${esc(j.time.slice(0,5))}</b></div>` : '') +
       (j.price ? `<div>${t('price')}: <b>${esc(j.price)}</b></div>` : '');
