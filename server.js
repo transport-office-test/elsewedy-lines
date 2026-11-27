@@ -23,6 +23,8 @@ let pgPool = null;
 
 function uid(prefix) { return prefix + crypto.randomBytes(8).toString('hex'); }
 
+const DEFAULT_COMPANIES = ['السويدي', 'المتحدة للصناعات', 'الألمونيوم', 'الهندسية', 'إيجيتك'];
+
 function seedState() {
   const seed = JSON.parse(fs.readFileSync(SEED_FILE, 'utf8'));
   const lines = seed.map((l, i) => ({
@@ -220,7 +222,7 @@ async function handle(req, res) {
   if (p === '/api/health') return send(res, 200, { ok: true });
 
   // public: active lines + stops
-  if (p === '/api/public/lines') return send(res, 200, { lines: publicLines() });
+  if (p === '/api/public/lines') return send(res, 200, { lines: publicLines(), companies: state.companies });
 
   // public: register
   if (p === '/api/public/register' && req.method === 'POST') {
@@ -237,9 +239,13 @@ async function handle(req, res) {
     let code = cleanCode(b.code || '');
     let company;
     if (!validName(name)) return send(res, 400, { error: 'name' });
+    let department = '';
     if (rtype === 'employee') {
       if (!validCode(code)) return send(res, 400, { error: 'code' });
-      company = 'السويدي';
+      company = cleanName(b.company);
+      if (!state.companies.includes(company)) return send(res, 400, { error: 'company' });
+      department = cleanName(b.department);
+      if (department.length < 2) return send(res, 400, { error: 'department' });
     } else {
       if (code && !validCode(code)) return send(res, 400, { error: 'code' });
       company = cleanName(b.company);
@@ -252,7 +258,7 @@ async function handle(req, res) {
         return send(res, 409, { error: 'dup', line: dl ? dl.name : '' });
       }
     }
-    const rider = { id: uid('R'), lineId: line.id, stopId: '', stopName, time: btime, name, code, company, rtype, kind: b.kind === 'flex' ? 'flex' : 'fixed', createdAt: new Date().toISOString() };
+    const rider = { id: uid('R'), lineId: line.id, stopId: '', stopName, time: btime, name, code, company, department, rtype, kind: b.kind === 'flex' ? 'flex' : 'fixed', createdAt: new Date().toISOString() };
     state.riders.push(rider); saveSoon();
     return send(res, 200, { ok: true, line: line.name, stop: stopName, time: btime, price: line.price });
   }
@@ -286,10 +292,21 @@ async function handle(req, res) {
       stops: l.stops.map(s => ({ id: s.id, name: s.name })),
       riders: state.riders.filter(r => r.lineId === l.id).map(r => {
         const st = l.stops.find(s => s.id === r.stopId);
-        return { id: r.id, name: r.name, code: r.code, company: r.company || '', stop: r.stopName || (st ? st.name : ''), stopPos: st ? st.position : 999, kind: r.kind, rtype: r.rtype || 'employee', time: r.time || '', createdAt: r.createdAt };
+        return { id: r.id, name: r.name, code: r.code, company: r.company || '', department: r.department || '', stop: r.stopName || (st ? st.name : ''), stopPos: st ? st.position : 999, kind: r.kind, rtype: r.rtype || 'employee', time: r.time || '', createdAt: r.createdAt };
       }).sort((a, b) => a.stopPos - b.stopPos || a.createdAt.localeCompare(b.createdAt))
     }));
-    return send(res, 200, { lines: out });
+    return send(res, 200, { lines: out, companies: state.companies });
+  }
+
+  if (p === '/api/admin/companies' && req.method === 'POST') {
+    if (!needAdmin()) return;
+    const b = await readBody(req);
+    const add = cleanName(b.add), remove = cleanName(b.remove);
+    if (add && !state.companies.includes(add)) state.companies.push(add);
+    if (remove) state.companies = state.companies.filter(c => c !== remove);
+    if (!state.companies.length) state.companies = DEFAULT_COMPANIES.slice();
+    saveSoon();
+    return send(res, 200, { ok: true, companies: state.companies });
   }
 
   if (p === '/api/admin/line/toggle' && req.method === 'POST') {
@@ -347,13 +364,13 @@ async function handle(req, res) {
     if (!needAdmin()) return;
     const lineId = u.searchParams.get('line') || '';
     const lines = lineId ? state.lines.filter(l => l.id === lineId) : state.lines.slice().sort((a, b) => a.position - b.position);
-    const rows = [['الكود', 'الاسم', 'الشركة', 'النقطه', 'التوقيت', 'سعر الدوره', 'اسم السائق', 'ID/ السائق', 'الخط', 'الحاله', 'النوع']];
+    const rows = [['الكود', 'الاسم', 'الشركة', 'القسم', 'النقطه', 'التوقيت', 'سعر الدوره', 'اسم السائق', 'ID/ السائق', 'الخط', 'الحاله', 'النوع']];
     for (const l of lines) {
       const riders = state.riders.filter(r => r.lineId === l.id);
-      if (!riders.length) { rows.push(['', '', '', l.stops[0] ? l.stops[0].name : '', l.time, l.price, l.driver, l.driverId, l.name, '', '']); continue; }
+      if (!riders.length) { rows.push(['', '', '', '', l.stops[0] ? l.stops[0].name : '', l.time, l.price, l.driver, l.driverId, l.name, '', '']); continue; }
       for (const r of riders) {
         const st = l.stops.find(s => s.id === r.stopId);
-        rows.push([r.code || '', r.name, r.company || '', r.stopName || (st ? st.name : ''), r.time || l.time, l.price, l.driver, l.driverId, l.name, r.kind === 'flex' ? 'متغير' : 'ثابت', r.rtype === 'external' ? 'خارجي' : 'موظف سويدي']);
+        rows.push([r.code || '', r.name, r.company || '', r.department || '', r.stopName || (st ? st.name : ''), r.time || l.time, l.price, l.driver, l.driverId, l.name, r.kind === 'flex' ? 'متغير' : 'ثابت', r.rtype === 'external' ? 'خارجي' : 'موظف سويدي']);
       }
     }
     const buf = buildXlsx(lineId && lines[0] ? lines[0].name : 'كل الخطوط', rows);
@@ -376,6 +393,7 @@ async function handle(req, res) {
   try { await initPg(); } catch (e) { console.error('PG init failed, falling back to file:', e.message); pgPool = null; }
   state = await loadState();
   if (!state || !Array.isArray(state.lines)) { state = seedState(); await saveNow(); console.log('seeded', state.lines.length, 'lines'); }
+  if (!Array.isArray(state.companies) || !state.companies.length) { state.companies = DEFAULT_COMPANIES.slice(); saveSoon(); }
   ensureAdmin();
   http.createServer((req, res) => handle(req, res).catch(e => { console.error(e); try { send(res, 500, { error: 'srv' }); } catch (_) {} }))
     .listen(PORT, () => console.log('listening on', PORT, pgPool ? '(postgres)' : '(file)'));
