@@ -238,6 +238,28 @@ function buildXlsxMulti(sheets) {
 
 function buildXlsx(sheetName, rows, opts) { return buildXlsxMulti([{ name: sheetName, rows, opts }]); }
 
+/* ---------------- time: free text allowed (hour-only like "1" or "الساعة 1") ---------------- */
+function cleanTimeText(v) {
+  let x = String(v == null ? '' : v).replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x660)).replace(/[۰-۹]/g, d => String(d.charCodeAt(0) - 0x6F0));
+  return x.replace(/\s+/g, ' ').trim().slice(0, 20);
+}
+function timeSortKey(v) {
+  const x = cleanTimeText(v);
+  const m = x.match(/^([01]?\d|2[0-3]):([0-5]\d)/);
+  if (m) return String(+m[1] * 60 + +m[2]).padStart(4, '0');
+  const hh = x.match(/(?:^|\D)([01]?\d|2[0-3])(?:\D|$)/);
+  if (hh) return String(+hh[1] * 60).padStart(4, '0');
+  return '9999'; // unparseable free text sorts last
+}
+
+/* ---------------- admin activity log ---------------- */
+function logAction(action, r, details) {
+  if (!Array.isArray(state.log)) state.log = [];
+  const lineName = (state.lines.find(l => l.id === r.lineId) || {}).name || '';
+  state.log.push({ id: uid('G'), at: new Date().toISOString(), action, riderName: r.name || '', code: r.code || '', line: lineName, details: details || '' });
+  if (state.log.length > 500) state.log.splice(0, state.log.length - 500);
+}
+
 /* ---------------- routes ---------------- */
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
 
@@ -258,7 +280,7 @@ async function handle(req, res) {
     if (!line) return send(res, 400, { error: 'line' });
     const stopName = cleanName(b.stopName);
     if (stopName.length < 2) return send(res, 400, { error: 'stop' });
-    const btime = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(b.time || '').trim()) ? String(b.time).trim() : '';
+    const btime = cleanTimeText(b.time);
     if (!btime) return send(res, 400, { error: 'time' });
     const name = cleanName(b.name);
     if (!validName(name)) return send(res, 400, { error: 'name' });
@@ -278,17 +300,17 @@ async function handle(req, res) {
       line2Id = l2.id; line2Name = l2.name;
       stop2 = cleanName(b.stop2);
       if (stop2.length < 2) return send(res, 400, { error: 'stop2' });
-      btime2 = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(b.time2 || '').trim()) ? String(b.time2).trim() : '';
+      btime2 = cleanTimeText(b.time2);
       if (!btime2) return send(res, 400, { error: 'time2' });
       const l3 = state.lines.find(l => l.id === clean(b.line3Id, 40) && l.active);
       if (!l3) return send(res, 400, { error: 'line3' });
       line3Id = l3.id; line3Name = l3.name;
       stop3 = cleanName(b.stop3);
       if (stop3.length < 2) return send(res, 400, { error: 'stop3' });
-      btime3 = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(b.time3 || '').trim()) ? String(b.time3).trim() : '';
+      btime3 = cleanTimeText(b.time3);
       if (!btime3) return send(res, 400, { error: 'time3' });
     }
-    const dup = code && !isProf && state.riders.find(r => r.code === code && r.company !== 'بروفيشنال');
+    const dup = code && !isProf && state.riders.find(r => !r.deletedAt && r.code === code && r.company !== 'بروفيشنال');
     if (dup) {
       const dl = state.lines.find(l => l.id === dup.lineId);
       return send(res, 409, { error: 'dup', line: dl ? dl.name : '' });
@@ -324,9 +346,9 @@ async function handle(req, res) {
   if (p === '/api/admin/lines') {
     if (!needAdmin()) return;
     const out = state.lines.slice().sort((a, b) => a.position - b.position).map(l => ({
-      id: l.id, name: l.name, time: l.time, price: l.price, driver: l.driver, driverId: l.driverId, active: l.active,
+      id: l.id, name: l.name, time: l.time, price: l.price, driver: l.driver, driverId: l.driverId, active: l.active, capacity: l.capacity || 0,
       stops: l.stops.map(s => ({ id: s.id, name: s.name })),
-      riders: state.riders.filter(r => r.lineId === l.id).map(r => {
+      riders: state.riders.filter(r => !r.deletedAt && r.lineId === l.id).map(r => {
         const st = l.stops.find(s => s.id === r.stopId);
         const l2n = (state.lines.find(x => x.id === r.line2Id) || {}).name || '';
         const l3n = (state.lines.find(x => x.id === r.line3Id) || {}).name || '';
@@ -377,6 +399,7 @@ async function handle(req, res) {
     if (b.price !== undefined) l.price = clean(b.price, 20);
     if (b.driver !== undefined) l.driver = clean(b.driver, 120);
     if (b.driverId !== undefined) l.driverId = clean(b.driverId, 40);
+    if (b.capacity !== undefined) { const c = parseInt(String(b.capacity).replace(/[^0-9]/g, ''), 10); l.capacity = (Number.isFinite(c) && c > 0 && c <= 500) ? c : 0; }
     saveSoon();
     return send(res, 200, { ok: true });
   }
@@ -384,10 +407,57 @@ async function handle(req, res) {
   if (p === '/api/admin/rider/delete' && req.method === 'POST') {
     if (!needAdmin()) return;
     const b = await readBody(req);
-    const i = state.riders.findIndex(r => r.id === clean(b.id, 40));
-    if (i < 0) return send(res, 404, { error: 'nf' });
+    const r = state.riders.find(x => x.id === clean(b.id, 40));
+    if (!r || r.deletedAt) return send(res, 404, { error: 'nf' });
+    r.deletedAt = new Date().toISOString(); saveSoon();
+    logAction('حذف', r, '');
+    return send(res, 200, { ok: true });
+  }
+
+  if (p === '/api/admin/rider/restore' && req.method === 'POST') {
+    if (!needAdmin()) return;
+    const b = await readBody(req);
+    const r = state.riders.find(x => x.id === clean(b.id, 40));
+    if (!r || !r.deletedAt) return send(res, 404, { error: 'nf' });
+    delete r.deletedAt; saveSoon();
+    logAction('استرجاع', r, '');
+    return send(res, 200, { ok: true });
+  }
+
+  if (p === '/api/admin/rider/purge' && req.method === 'POST') {
+    if (!needAdmin()) return;
+    const b = await readBody(req);
+    const i = state.riders.findIndex(x => x.id === clean(b.id, 40));
+    if (i < 0 || !state.riders[i].deletedAt) return send(res, 404, { error: 'nf' });
+    logAction('حذف نهائي', state.riders[i], '');
     state.riders.splice(i, 1); saveSoon();
     return send(res, 200, { ok: true });
+  }
+
+  if (p === '/api/admin/trash') {
+    if (!needAdmin()) return;
+    const items = state.riders.filter(r => r.deletedAt).map(r => ({
+      id: r.id, name: r.name, code: r.code || '', company: r.company || '', department: r.department || '',
+      stop: r.stopName || '', time: r.time || '', kind: r.kind || 'fixed',
+      line: (state.lines.find(l => l.id === r.lineId) || {}).name || '', deletedAt: r.deletedAt
+    })).sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)));
+    return send(res, 200, { items });
+  }
+
+  if (p === '/api/admin/log') {
+    if (!needAdmin()) return;
+    const items = (state.log || []).slice().sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 200);
+    return send(res, 200, { items });
+  }
+
+  if (p === '/api/admin/log.csv') {
+    if (!needAdmin()) return;
+    const items = (state.log || []).slice().sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+    const rows = [['الوقت', 'العملية', 'الاسم', 'الكود', 'الخط', 'التفاصيل'].map(q).join(',')];
+    for (const e of items) rows.push([e.at, e.action, e.riderName, e.code, e.line, e.details].map(q).join(','));
+    res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="log.csv"' });
+    return res.end('\ufeff' + rows.join('\r\n'));
   }
 
   if (p === '/api/admin/rider/update' && req.method === 'POST') {
@@ -395,24 +465,32 @@ async function handle(req, res) {
     const b = await readBody(req);
     const r = state.riders.find(x => x.id === clean(b.id, 40));
     if (!r) return send(res, 404, { error: 'nf' });
+    const before = { name: r.name, code: r.code, company: r.company, department: r.department, stopName: r.stopName, time: r.time, kind: r.kind, stop2: r.stop2, time2: r.time2, stop3: r.stop3, time3: r.time3, lineId: r.lineId };
     const line = state.lines.find(l => l.id === r.lineId);
-    const tmOk = v => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v || '').trim());
     if (b.name !== undefined) r.name = clean(b.name, 120) || r.name;
     if (b.code !== undefined) r.code = clean(b.code, 40) || r.code;
     if (b.company !== undefined) r.company = cleanName(b.company);
     if (b.department !== undefined) r.department = cleanName(b.department);
     if (b.stopName !== undefined) { const s = cleanName(b.stopName); if (s.length >= 2) { r.stopName = s; r.stopId = ''; } }
-    if (b.time !== undefined && tmOk(b.time)) r.time = String(b.time).trim();
+    if (b.time !== undefined) { const tv = cleanTimeText(b.time); if (tv) r.time = tv; }
     if (b.kind !== undefined) r.kind = b.kind === 'flex' ? 'flex' : 'fixed';
     if (b.stop2 !== undefined) r.stop2 = cleanName(b.stop2);
-    if (b.time2 !== undefined && tmOk(b.time2)) r.time2 = String(b.time2).trim();
+    if (b.time2 !== undefined) { const tv2 = cleanTimeText(b.time2); if (tv2) r.time2 = tv2; }
     if (b.stop3 !== undefined) r.stop3 = cleanName(b.stop3);
-    if (b.time3 !== undefined && tmOk(b.time3)) r.time3 = String(b.time3).trim();
+    if (b.time3 !== undefined) { const tv3 = cleanTimeText(b.time3); if (tv3) r.time3 = tv3; }
     if (b.stopId !== undefined && line && line.stops.some(s => s.id === b.stopId)) r.stopId = b.stopId;
     if (b.lineId !== undefined) {
       const nl = state.lines.find(l => l.id === clean(b.lineId, 40));
       if (nl) { r.lineId = nl.id; r.stopId = ((nl.stops.find(s => s.id === b.stopId) || nl.stops[0]) || {}).id || ''; r.stopName = ''; }
     }
+    const labels = { name: 'الاسم', code: 'الكود', company: 'الشركة', department: 'القسم', stopName: 'المحطة', time: 'الميعاد', kind: 'الحالة', stop2: 'محطة الوردية التانية', time2: 'ميعاد الوردية التانية', stop3: 'محطة الوردية التالتة', time3: 'ميعاد الوردية التالتة', lineId: 'الخط' };
+    const changes = [];
+    for (const k of Object.keys(labels)) {
+      const fmt = (k2, v) => k2 === 'lineId' ? ((state.lines.find(l2 => l2.id === v) || {}).name || '') : k2 === 'kind' ? (v === 'flex' ? 'متغير' : 'ثابت') : String(v == null ? '' : v);
+      const ov = fmt(k, before[k]), nv = fmt(k, r[k]);
+      if (ov !== nv) changes.push(labels[k] + ': «' + ov + '» ← «' + nv + '»');
+    }
+    if (changes.length) logAction('تعديل', r, changes.join(' • '));
     saveSoon();
     return send(res, 200, { ok: true });
   }
@@ -424,14 +502,14 @@ async function handle(req, res) {
     if (!l) return send(res, 404, { error: 'nf' });
     const escH = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const lineName = x => (state.lines.find(y => y.id === x) || {}).name || '';
-    const riders = state.riders.filter(r => r.lineId === l.id).slice()
-      .sort((a, b) => String(a.time || '99').localeCompare(String(b.time || '99')) || (a.kind === b.kind ? 0 : a.kind === 'flex' ? 1 : -1) || String(a.createdAt).localeCompare(String(b.createdAt)));
+    const riders = state.riders.filter(r => !r.deletedAt && r.lineId === l.id).slice()
+      .sort((a, b) => timeSortKey(a.time).localeCompare(timeSortKey(b.time)) || (a.kind === b.kind ? 0 : a.kind === 'flex' ? 1 : -1) || String(a.createdAt).localeCompare(String(b.createdAt)));
     const rowsHtml = riders.map((r, i) => {
       const st = l.stops.find(s => s.id === r.stopId);
       const shifts = r.kind === 'flex'
-        ? `<div class="sh">الوردية التانية: ${escH(lineName(r.line2Id))} • ${escH(r.stop2 || '')} • ${escH((r.time2 || '').slice(0, 5))}</div><div class="sh">الوردية التالتة: ${escH(lineName(r.line3Id))} • ${escH(r.stop3 || '')} • ${escH((r.time3 || '').slice(0, 5))}</div>`
+        ? `<div class="sh">الوردية التانية: ${escH(lineName(r.line2Id))} • ${escH(r.stop2 || '')} • ${escH((r.time2 || ''))}</div><div class="sh">الوردية التالتة: ${escH(lineName(r.line3Id))} • ${escH(r.stop3 || '')} • ${escH((r.time3 || ''))}</div>`
         : '';
-      return `<tr><td>${i + 1}</td><td class="nm">${escH(r.name)}${shifts}</td><td>${escH(r.code) || '—'}</td><td>${escH(r.company || '')}</td><td>${escH(r.department || '')}</td><td>${escH(r.stopName || (st ? st.name : ''))}</td><td>${escH((r.time || '').slice(0, 5))}</td><td>${r.kind === 'flex' ? 'متغير' : 'ثابت'}</td></tr>`;
+      return `<tr><td>${i + 1}</td><td class="nm">${escH(r.name)}${shifts}</td><td>${escH(r.code) || '—'}</td><td>${escH(r.company || '')}</td><td>${escH(r.department || '')}</td><td>${escH(r.stopName || (st ? st.name : ''))}</td><td>${escH((r.time || ''))}</td><td>${r.kind === 'flex' ? 'متغير' : 'ثابت'}</td></tr>`;
     }).join('');
     const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>كشف خط ${escH(l.name)}</title><style>*{box-sizing:border-box;margin:0}body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:#111;padding:24px;max-width:800px;margin:0 auto}.head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:6px}h1{font-size:20px}.mut{color:#555;font-size:12.5px;margin-bottom:14px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px}col.c-m{width:5%}col.c-name{width:27%}col.c-code{width:11%}col.c-comp{width:12%}col.c-dept{width:13%}col.c-stop{width:17%}col.c-time{width:8%}col.c-kind{width:7%}th,td{border:1px solid #999;padding:7px 8px;text-align:right;vertical-align:top;overflow-wrap:break-word}th{background:#eee;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact}td.nm{font-weight:700}tr{break-inside:avoid;page-break-inside:avoid}thead{display:table-header-group}.sh{font-weight:400;font-size:11.5px;color:#333;margin-top:3px}.btn-print{padding:8px 18px;border:0;border-radius:8px;background:#1b2a4a;color:#fff;font-weight:700;cursor:pointer;font-size:14px}@page{size:A4;margin:12mm}@media print{.btn-print{display:none}body{padding:0;max-width:none}}</style></head><body><div class="head"><h1>كشف ركوب خط: ${escH(l.name)}</h1><button class="btn-print" onclick="window.print()">طباعة</button></div><div class="mut">${riders.length} موظف • مرتب بميعاد الركوب • خطوط سير العربيات — السويدي إيجيتك</div><table><colgroup><col class="c-m"><col class="c-name"><col class="c-code"><col class="c-comp"><col class="c-dept"><col class="c-stop"><col class="c-time"><col class="c-kind"></colgroup><thead><tr><th>م</th><th>الاسم</th><th>الكود</th><th>الشركة</th><th>القسم</th><th>محطة الركوب</th><th>الميعاد</th><th>الحالة</th></tr></thead><tbody>${rowsHtml}</tbody></table></body></html>`;
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
@@ -455,17 +533,17 @@ async function handle(req, res) {
       // single flat sheet (per-line button, or ?flat=1 used by the daily backup)
       const rows = [head];
       for (const l of lines) {
-        const riders = state.riders.filter(r => r.lineId === l.id);
+        const riders = state.riders.filter(r => !r.deletedAt && r.lineId === l.id);
         if (!riders.length) { rows.push([l.name, '', '', '', '', '', '', '', '', '', '', '', '', '', '']); continue; }
         for (const r of riders) rows.push([l.name, ...riderCells(l, r)]);
       }
       buf = buildXlsx(lineId && lines[0] ? lines[0].name : 'كل الخطوط', rows, { widths: [26, 22, 10, 20, 14, 8, 14, 8, 22, 18, 12, 22, 18, 12], centerCols: [2, 5, 7, 10, 13] });
     } else {
       // one workbook: summary sheet + one sheet per line, riders sorted by boarding time
-      const byTime = l => state.riders.filter(r => r.lineId === l.id).slice().sort((x, y) => String(x.time || '99').localeCompare(String(y.time || '99')) || String(x.createdAt).localeCompare(String(y.createdAt)));
+      const byTime = l => state.riders.filter(r => !r.deletedAt && r.lineId === l.id).slice().sort((x, y) => timeSortKey(x.time).localeCompare(timeSortKey(y.time)) || String(x.createdAt).localeCompare(String(y.createdAt)));
       const summary = [['الخط', 'عدد الموظفين']];
       let total = 0;
-      for (const l of lines) { const n = state.riders.filter(r => r.lineId === l.id).length; total += n; summary.push([l.name, String(n)]); }
+      for (const l of lines) { const n = state.riders.filter(r => !r.deletedAt && r.lineId === l.id).length; total += n; summary.push([l.name, String(n)]); }
       summary.push(['الإجمالي', String(total)]);
       const sheets = [{ name: 'كل الخطوط', rows: summary, opts: { widths: [30, 12], centerCols: [1] } }];
       const used = new Set();
@@ -538,6 +616,7 @@ async function handle(req, res) {
   state = await loadState();
   if (!state || !Array.isArray(state.lines)) { state = seedState(); await saveNow(); console.log('seeded', state.lines.length, 'lines'); }
   if (!Array.isArray(state.companies) || !state.companies.length) { state.companies = DEFAULT_COMPANIES.slice(); saveSoon(); }
+  if (!Array.isArray(state.log)) { state.log = []; saveSoon(); }
   ensureAdmin();
   http.createServer((req, res) => handle(req, res).catch(e => { console.error(e); try { send(res, 500, { error: 'srv' }); } catch (_) {} }))
     .listen(PORT, () => console.log('listening on', PORT, pgPool ? '(postgres)' : '(file)'));
