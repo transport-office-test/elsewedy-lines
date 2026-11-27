@@ -310,6 +310,12 @@ function normTime(v){
 $('timeIn').addEventListener('blur', () => { const n = normTime($('timeIn').value); if (n) $('timeIn').value = n; });
 function clearFieldErrs(){ document.querySelectorAll('.field-err').forEach(x => x.classList.remove('field-err')); }
 ['stopIn','timeIn','nameIn','codeIn','deptIn','companySel'].forEach(id => $(id).addEventListener('input', e => e.target.classList.remove('field-err')));
+function syncCodeRow(){
+  const prof = $('companySel').value === 'بروفيشنال';
+  $('codeRow').classList.toggle('hidden', prof);
+  if (prof) { $('codeIn').value = ''; $('codeIn').classList.remove('field-err'); }
+}
+$('companySel').addEventListener('change', syncCodeRow);
 function showFieldError(id, key){
   const err = $('regErr');
   err.textContent = t(key);
@@ -326,7 +332,8 @@ $('regBtn').onclick = async () => {
   const l = curLine(), stopName = $('stopIn').value.trim(), btime = normTime($('timeIn').value), name = $('nameIn').value.trim(), code = $('codeIn').value.trim();
   const company = $('companySel').value;
   const department = $('deptIn').value.trim();
-  const bad = !l ? ['lineField','errLine'] : !stopName ? ['stopIn','errStop'] : !btime ? ['timeIn','errTime'] : !name ? ['nameIn','errName'] : !company ? ['companySel','errCompany'] : !code ? ['codeIn','errCode'] : !department ? ['deptIn','errDept'] : null;
+  const prof = company === 'بروفيشنال';
+  const bad = !l ? ['lineField','errLine'] : !stopName ? ['stopIn','errStop'] : !btime ? ['timeIn','errTime'] : !name ? ['nameIn','errName'] : !company ? ['companySel','errCompany'] : (!code && !prof) ? ['codeIn','errCode'] : !department ? ['deptIn','errDept'] : null;
   if (bad) { showFieldError(bad[0], bad[1]); return; }
   if (btime) $('timeIn').value = btime;
   $('regBtn').disabled = true;
