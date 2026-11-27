@@ -376,17 +376,46 @@ async function handle(req, res) {
     const r = state.riders.find(x => x.id === clean(b.id, 40));
     if (!r) return send(res, 404, { error: 'nf' });
     const line = state.lines.find(l => l.id === r.lineId);
+    const tmOk = v => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v || '').trim());
     if (b.name !== undefined) r.name = clean(b.name, 120) || r.name;
     if (b.code !== undefined) r.code = clean(b.code, 40) || r.code;
     if (b.company !== undefined) r.company = cleanName(b.company);
+    if (b.department !== undefined) r.department = cleanName(b.department);
+    if (b.stopName !== undefined) { const s = cleanName(b.stopName); if (s.length >= 2) { r.stopName = s; r.stopId = ''; } }
+    if (b.time !== undefined && tmOk(b.time)) r.time = String(b.time).trim();
     if (b.kind !== undefined) r.kind = b.kind === 'flex' ? 'flex' : 'fixed';
+    if (b.stop2 !== undefined) r.stop2 = cleanName(b.stop2);
+    if (b.time2 !== undefined && tmOk(b.time2)) r.time2 = String(b.time2).trim();
+    if (b.stop3 !== undefined) r.stop3 = cleanName(b.stop3);
+    if (b.time3 !== undefined && tmOk(b.time3)) r.time3 = String(b.time3).trim();
     if (b.stopId !== undefined && line && line.stops.some(s => s.id === b.stopId)) r.stopId = b.stopId;
     if (b.lineId !== undefined) {
       const nl = state.lines.find(l => l.id === clean(b.lineId, 40));
-      if (nl) { r.lineId = nl.id; r.stopId = (nl.stops.find(s => s.id === b.stopId) || nl.stops[0]).id; }
+      if (nl) { r.lineId = nl.id; r.stopId = ((nl.stops.find(s => s.id === b.stopId) || nl.stops[0]) || {}).id || ''; r.stopName = ''; }
     }
     saveSoon();
     return send(res, 200, { ok: true });
+  }
+
+  // print-ready A4 sheet for one line (admin only): riders sorted by boarding time, fixed before flex at equal times
+  if (p === '/api/admin/line/sheet') {
+    if (!needAdmin()) return;
+    const l = state.lines.find(x => x.id === clean(u.searchParams.get('id') || '', 40));
+    if (!l) return send(res, 404, { error: 'nf' });
+    const escH = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const lineName = x => (state.lines.find(y => y.id === x) || {}).name || '';
+    const riders = state.riders.filter(r => r.lineId === l.id).slice()
+      .sort((a, b) => String(a.time || '99').localeCompare(String(b.time || '99')) || (a.kind === b.kind ? 0 : a.kind === 'flex' ? 1 : -1) || String(a.createdAt).localeCompare(String(b.createdAt)));
+    const rowsHtml = riders.map((r, i) => {
+      const st = l.stops.find(s => s.id === r.stopId);
+      const shifts = r.kind === 'flex'
+        ? `<div class="sh">الوردية التانية: ${escH(lineName(r.line2Id))} • ${escH(r.stop2 || '')} • ${escH((r.time2 || '').slice(0, 5))}</div><div class="sh">الوردية التالتة: ${escH(lineName(r.line3Id))} • ${escH(r.stop3 || '')} • ${escH((r.time3 || '').slice(0, 5))}</div>`
+        : '';
+      return `<tr><td>${i + 1}</td><td class="nm">${escH(r.name)}${shifts}</td><td>${escH(r.code) || '—'}</td><td>${escH(r.company || '')}</td><td>${escH(r.department || '')}</td><td>${escH(r.stopName || (st ? st.name : ''))}</td><td>${escH((r.time || '').slice(0, 5))}</td><td>${r.kind === 'flex' ? 'متغير' : 'ثابت'}</td></tr>`;
+    }).join('');
+    const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>كشف خط ${escH(l.name)}</title><style>*{box-sizing:border-box;margin:0}body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:#111;padding:24px;max-width:800px;margin:0 auto}.head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:6px}h1{font-size:20px}.mut{color:#555;font-size:12.5px;margin-bottom:14px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{border:1px solid #999;padding:7px 8px;text-align:right;vertical-align:top}th{background:#eee;font-weight:700}td.nm{font-weight:700}.sh{font-weight:400;font-size:11.5px;color:#333;margin-top:3px}.btn-print{padding:8px 18px;border:0;border-radius:8px;background:#1b2a4a;color:#fff;font-weight:700;cursor:pointer;font-size:14px}@page{size:A4;margin:12mm}@media print{.btn-print{display:none}body{padding:0;max-width:none}}</style></head><body><div class="head"><h1>كشف ركوب خط: ${escH(l.name)}</h1><button class="btn-print" onclick="window.print()">طباعة</button></div><div class="mut">${riders.length} موظف • مرتب بميعاد الركوب • خطوط سير العربيات — السويدي إيجيتك</div><table><tr><th>م</th><th>الاسم</th><th>الكود</th><th>الشركة</th><th>القسم</th><th>محطة الركوب</th><th>الميعاد</th><th>الحالة</th></tr>${rowsHtml}</table></body></html>`;
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+    return res.end(html);
   }
 
   if (p === '/api/admin/export.xlsx') {
