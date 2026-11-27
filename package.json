@@ -1,0 +1,8 @@
+{
+  "name": "elsewedy-lines",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Employee transport lines registration - Elsewedy Egytech",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "pg": "^8.13.0" }
+}
