@@ -235,14 +235,15 @@ async function handle(req, res) {
     const btime = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(b.time || '').trim()) ? String(b.time).trim() : '';
     if (!btime) return send(res, 400, { error: 'time' });
     const name = cleanName(b.name);
-    const code = cleanCode(b.code || '');
     if (!validName(name)) return send(res, 400, { error: 'name' });
-    if (!validCode(code)) return send(res, 400, { error: 'code' });
     const company = cleanName(b.company);
     if (!state.companies.includes(company)) return send(res, 400, { error: 'company' });
+    const isProf = company === 'بروفيشنال'; // professional riders have no employee code
+    const code = isProf ? '' : cleanCode(b.code || '');
+    if (!isProf && !validCode(code)) return send(res, 400, { error: 'code' });
     const department = cleanName(b.department);
     if (department.length < 2) return send(res, 400, { error: 'department' });
-    const dup = state.riders.find(r => r.code === code);
+    const dup = code && state.riders.find(r => r.code === code);
     if (dup) {
       const dl = state.lines.find(l => l.id === dup.lineId);
       return send(res, 409, { error: 'dup', line: dl ? dl.name : '' });
