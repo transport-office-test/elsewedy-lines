@@ -325,8 +325,7 @@ $('regBtn').onclick = async () => {
   try {
     const j = await api('/api/public/register', { lineId: l.id, stopName, time: btime, name, code, company, department, kind });
     $('doneInfo').innerHTML = `<div>${t('line')}: <b>${esc(j.line)}</b></div><div>${t('stop')}: <b>${esc(j.stop)}</b></div>` +
-      (j.time ? `<div>${t('time')}: <b>${esc(j.time.slice(0,5))}</b></div>` : '') +
-      (j.price ? `<div>${t('price')}: <b>${esc(j.price)}</b></div>` : '');
+      (j.time ? `<div>${t('time')}: <b>${esc(j.time.slice(0,5))}</b></div>` : '');
     $('doneCard').classList.remove('hidden');
     $('regBtn').closest('.card').classList.add('hidden');
     $('nameIn').value = ''; $('codeIn').value = ''; $('deptIn').value = ''; $('stopIn').value = ''; $('timeIn').value = '';
