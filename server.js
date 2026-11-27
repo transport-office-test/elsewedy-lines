@@ -118,6 +118,36 @@ function send(res, code, obj, headers) {
 }
 const clean = (v, max) => String(v == null ? '' : v).trim().slice(0, max || 120);
 
+/* ---- input cleaning & validation (mass registration) ---- */
+function cleanName(v) {
+  let s = String(v == null ? '' : v);
+  s = s.replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim();
+  s = s.replace(/[^\u0600-\u06FFa-zA-Z0-9 .\-']/g, '').replace(/\s+/g, ' ').trim();
+  if (s.length > 120) s = s.slice(0, 120).trim();
+  return s;
+}
+function validName(s) {
+  if (s.length < 3) return false;
+  const letters = (s.match(/[\u0600-\u06FFa-zA-Z]/g) || []).length;
+  return letters >= 2;
+}
+function cleanCode(v) {
+  return String(v == null ? '' : v).replace(/\s+/g, '').replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 20);
+}
+function validCode(s) { return s.length >= 2 && /[0-9A-Z\u0600-\u06FF]/.test(s); }
+
+/* simple per-IP rate limit for public registration */
+const regHits = new Map(); // ip -> [timestamps]
+function regAllowed(req) {
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '?';
+  const now = Date.now(); const win = 10 * 60 * 1000;
+  const arr = (regHits.get(ip) || []).filter(t => now - t < win);
+  if (arr.length >= 12) { regHits.set(ip, arr); return false; }
+  arr.push(now); regHits.set(ip, arr);
+  if (regHits.size > 5000) regHits.clear();
+  return true;
+}
+
 /* ---------------- public API ---------------- */
 function publicLines() {
   return state.lines.filter(l => l.active).sort((a, b) => a.position - b.position)
@@ -190,13 +220,15 @@ async function handle(req, res) {
 
   // public: register
   if (p === '/api/public/register' && req.method === 'POST') {
+    if (!regAllowed(req)) return send(res, 429, { error: 'rate' });
     const b = await readBody(req);
     const line = state.lines.find(l => l.id === clean(b.lineId, 40) && l.active);
     if (!line) return send(res, 400, { error: 'line' });
     const stop = line.stops.find(s => s.id === clean(b.stopId, 40));
     if (!stop) return send(res, 400, { error: 'stop' });
-    const name = clean(b.name, 120), code = clean(b.code, 40);
-    if (!name || !code) return send(res, 400, { error: 'fields' });
+    const name = cleanName(b.name), code = cleanCode(b.code);
+    if (!validName(name)) return send(res, 400, { error: 'name' });
+    if (!validCode(code)) return send(res, 400, { error: 'code' });
     const dup = state.riders.find(r => r.code === code);
     if (dup) {
       const dl = state.lines.find(l => l.id === dup.lineId);
