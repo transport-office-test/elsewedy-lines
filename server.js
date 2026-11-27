@@ -366,13 +366,13 @@ async function handle(req, res) {
     if (!needAdmin()) return;
     const lineId = u.searchParams.get('line') || '';
     const lines = lineId ? state.lines.filter(l => l.id === lineId) : state.lines.slice().sort((a, b) => a.position - b.position);
-    const rows = [['الخط', 'محطة الركوب بالتحديد', 'ميعاد الركوب', 'الاسم', 'الكود', 'الشركة', 'القسم', 'الحاله']];
+    const rows = [['الخط', 'محطة الركوب بالتحديد', 'ميعاد الركوب', 'الاسم', 'الشركة', 'الكود', 'القسم', 'الحاله']];
     for (const l of lines) {
       const riders = state.riders.filter(r => r.lineId === l.id);
       if (!riders.length) { rows.push([l.name, '', '', '', '', '', '', '']); continue; }
       for (const r of riders) {
         const st = l.stops.find(s => s.id === r.stopId);
-        rows.push([l.name, r.stopName || (st ? st.name : ''), r.time || '', r.name, r.code || '', r.company || '', r.department || '', r.kind === 'flex' ? 'متغير' : 'ثابت']);
+        rows.push([l.name, r.stopName || (st ? st.name : ''), r.time || '', r.name, r.company || '', r.code || '', r.department || '', r.kind === 'flex' ? 'متغير' : 'ثابت']);
       }
     }
     const buf = buildXlsx(lineId && lines[0] ? lines[0].name : 'كل الخطوط', rows);
