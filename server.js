@@ -235,30 +235,19 @@ async function handle(req, res) {
     const btime = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(b.time || '').trim()) ? String(b.time).trim() : '';
     if (!btime) return send(res, 400, { error: 'time' });
     const name = cleanName(b.name);
-    const rtype = b.rtype === 'external' ? 'external' : 'employee';
-    let code = cleanCode(b.code || '');
-    let company;
+    const code = cleanCode(b.code || '');
     if (!validName(name)) return send(res, 400, { error: 'name' });
-    let department = '';
-    if (rtype === 'employee') {
-      if (!validCode(code)) return send(res, 400, { error: 'code' });
-      company = cleanName(b.company);
-      if (!state.companies.includes(company)) return send(res, 400, { error: 'company' });
-      department = cleanName(b.department);
-      if (department.length < 2) return send(res, 400, { error: 'department' });
-    } else {
-      if (code && !validCode(code)) return send(res, 400, { error: 'code' });
-      company = cleanName(b.company);
-      if (company.length < 2) return send(res, 400, { error: 'company' });
+    if (!validCode(code)) return send(res, 400, { error: 'code' });
+    const company = cleanName(b.company);
+    if (!state.companies.includes(company)) return send(res, 400, { error: 'company' });
+    const department = cleanName(b.department);
+    if (department.length < 2) return send(res, 400, { error: 'department' });
+    const dup = state.riders.find(r => r.code === code);
+    if (dup) {
+      const dl = state.lines.find(l => l.id === dup.lineId);
+      return send(res, 409, { error: 'dup', line: dl ? dl.name : '' });
     }
-    if (code) {
-      const dup = state.riders.find(r => r.code && r.code === code);
-      if (dup) {
-        const dl = state.lines.find(l => l.id === dup.lineId);
-        return send(res, 409, { error: 'dup', line: dl ? dl.name : '' });
-      }
-    }
-    const rider = { id: uid('R'), lineId: line.id, stopId: '', stopName, time: btime, name, code, company, department, rtype, kind: b.kind === 'flex' ? 'flex' : 'fixed', createdAt: new Date().toISOString() };
+    const rider = { id: uid('R'), lineId: line.id, stopId: '', stopName, time: btime, name, code, company, department, rtype: 'employee', kind: b.kind === 'flex' ? 'flex' : 'fixed', createdAt: new Date().toISOString() };
     state.riders.push(rider); saveSoon();
     return send(res, 200, { ok: true, line: line.name, stop: stopName, time: btime, price: line.price });
   }
