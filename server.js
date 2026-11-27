@@ -380,6 +380,16 @@ async function handle(req, res) {
     return res.end(buf);
   }
 
+  // PWA icons: PNGs are embedded as base64 in icons-data.js (repo holds text only)
+  if (p === '/icon-192.png' || p === '/icon-512.png') {
+    const icons = require('./icons-data.js');
+    const b64 = icons[p];
+    if (b64) {
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-cache' });
+      return res.end(Buffer.from(b64, 'base64'));
+    }
+  }
+
   // static
   let fp = p === '/' ? '/index.html' : p;
   const file = path.join(__dirname, 'public', path.normalize(fp).replace(/^(\.\.[/\\])+/, ''));
