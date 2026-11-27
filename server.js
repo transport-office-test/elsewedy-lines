@@ -157,7 +157,7 @@ function regAllowed(req) {
 /* ---------------- public API ---------------- */
 function publicLines() {
   return state.lines.filter(l => l.active).sort((a, b) => a.position - b.position)
-    .map(l => ({ id: l.id, name: l.name, time: l.time, price: l.price, stops: l.stops.map(s => ({ id: s.id, name: s.name })) }));
+    .map(l => ({ id: l.id, name: l.name, time: l.time, stops: l.stops.map(s => ({ id: s.id, name: s.name })) }));
 }
 
 /* ---------------- xlsx export (minimal, zero-dep) ---------------- */
@@ -249,7 +249,7 @@ async function handle(req, res) {
     }
     const rider = { id: uid('R'), lineId: line.id, stopId: '', stopName, time: btime, name, code, company, department, rtype: 'employee', kind: b.kind === 'flex' ? 'flex' : 'fixed', createdAt: new Date().toISOString() };
     state.riders.push(rider); saveSoon();
-    return send(res, 200, { ok: true, line: line.name, stop: stopName, time: btime, price: line.price });
+    return send(res, 200, { ok: true, line: line.name, stop: stopName, time: btime });
   }
 
   // auth
