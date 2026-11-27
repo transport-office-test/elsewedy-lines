@@ -172,7 +172,7 @@ function crc32(buf) {
   for (let i = 0; i < buf.length; i++) c = (c >>> 8) ^ table[(c ^ buf[i]) & 0xFF];
   return (c ^ -1) >>> 0;
 }
-function buildXlsx(sheetName, rows, opts) {
+function makeSheetXml(rows, opts) {
   // rows: array of arrays of strings; opts: { widths: [..], centerCols: [colIndex, ..] }
   const widths = (opts && opts.widths) || [];
   const centerCols = (opts && opts.centerCols) || [];
@@ -187,15 +187,22 @@ function buildXlsx(sheetName, rows, opts) {
     }).join('') + '</row>';
   });
   const colsXml = widths.length ? `<cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols>` : '';
-  const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView rightToLeft="1" showGridLines="1" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>${colsXml}<sheetData>${sheetRows}</sheetData></worksheet>`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView rightToLeft="1" showGridLines="1" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>${colsXml}<sheetData>${sheetRows}</sheetData></worksheet>`;
+}
+
+function buildXlsxMulti(sheets) {
+  // sheets: [{ name, rows, opts }] -> one workbook, one worksheet per entry
+  const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF12204A"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFB0B7C3"/></left><right style="thin"><color rgb="FFB0B7C3"/></right><top style="thin"><color rgb="FFB0B7C3"/></top><bottom style="thin"><color rgb="FFB0B7C3"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
-  const wbXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${esc(sheetName).slice(0, 31)}" sheetId="1" r:id="rId1"/></sheets></workbook>`;
-  const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
+  const wbXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map((s, i) => `<sheet name="${esc(s.name).slice(0, 31)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets></workbook>`;
+  const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((s, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
   const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
-  const ctXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
+  const ctXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${sheets.map((s, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
   const files = [
     ['[Content_Types].xml', ctXml], ['_rels/.rels', rootRels],
-    ['xl/workbook.xml', wbXml], ['xl/_rels/workbook.xml.rels', relsXml], ['xl/worksheets/sheet1.xml', sheetXml], ['xl/styles.xml', stylesXml]
+    ['xl/workbook.xml', wbXml], ['xl/_rels/workbook.xml.rels', relsXml],
+    ...sheets.map((s, i) => [`xl/worksheets/sheet${i + 1}.xml`, makeSheetXml(s.rows, s.opts)]),
+    ['xl/styles.xml', stylesXml]
   ];
   const parts = []; let offset = 0; const central = [];
   for (const [name, content] of files) {
@@ -218,6 +225,8 @@ function buildXlsx(sheetName, rows, opts) {
   end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(offset, 16);
   return Buffer.concat([...parts, cd, end]);
 }
+
+function buildXlsx(sheetName, rows, opts) { return buildXlsxMulti([{ name: sheetName, rows, opts }]); }
 
 /* ---------------- routes ---------------- */
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
@@ -414,7 +423,7 @@ async function handle(req, res) {
         : '';
       return `<tr><td>${i + 1}</td><td class="nm">${escH(r.name)}${shifts}</td><td>${escH(r.code) || '—'}</td><td>${escH(r.company || '')}</td><td>${escH(r.department || '')}</td><td>${escH(r.stopName || (st ? st.name : ''))}</td><td>${escH((r.time || '').slice(0, 5))}</td><td>${r.kind === 'flex' ? 'متغير' : 'ثابت'}</td></tr>`;
     }).join('');
-    const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>كشف خط ${escH(l.name)}</title><style>*{box-sizing:border-box;margin:0}body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:#111;padding:24px;max-width:800px;margin:0 auto}.head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:6px}h1{font-size:20px}.mut{color:#555;font-size:12.5px;margin-bottom:14px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{border:1px solid #999;padding:7px 8px;text-align:right;vertical-align:top}th{background:#eee;font-weight:700}td.nm{font-weight:700}.sh{font-weight:400;font-size:11.5px;color:#333;margin-top:3px}.btn-print{padding:8px 18px;border:0;border-radius:8px;background:#1b2a4a;color:#fff;font-weight:700;cursor:pointer;font-size:14px}@page{size:A4;margin:12mm}@media print{.btn-print{display:none}body{padding:0;max-width:none}}</style></head><body><div class="head"><h1>كشف ركوب خط: ${escH(l.name)}</h1><button class="btn-print" onclick="window.print()">طباعة</button></div><div class="mut">${riders.length} موظف • مرتب بميعاد الركوب • خطوط سير العربيات — السويدي إيجيتك</div><table><tr><th>م</th><th>الاسم</th><th>الكود</th><th>الشركة</th><th>القسم</th><th>محطة الركوب</th><th>الميعاد</th><th>الحالة</th></tr>${rowsHtml}</table></body></html>`;
+    const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>كشف خط ${escH(l.name)}</title><style>*{box-sizing:border-box;margin:0}body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:#111;padding:24px;max-width:800px;margin:0 auto}.head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:6px}h1{font-size:20px}.mut{color:#555;font-size:12.5px;margin-bottom:14px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px}col.c-m{width:5%}col.c-name{width:27%}col.c-code{width:11%}col.c-comp{width:12%}col.c-dept{width:13%}col.c-stop{width:17%}col.c-time{width:8%}col.c-kind{width:7%}th,td{border:1px solid #999;padding:7px 8px;text-align:right;vertical-align:top;overflow-wrap:break-word}th{background:#eee;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact}td.nm{font-weight:700}tr{break-inside:avoid;page-break-inside:avoid}thead{display:table-header-group}.sh{font-weight:400;font-size:11.5px;color:#333;margin-top:3px}.btn-print{padding:8px 18px;border:0;border-radius:8px;background:#1b2a4a;color:#fff;font-weight:700;cursor:pointer;font-size:14px}@page{size:A4;margin:12mm}@media print{.btn-print{display:none}body{padding:0;max-width:none}}</style></head><body><div class="head"><h1>كشف ركوب خط: ${escH(l.name)}</h1><button class="btn-print" onclick="window.print()">طباعة</button></div><div class="mut">${riders.length} موظف • مرتب بميعاد الركوب • خطوط سير العربيات — السويدي إيجيتك</div><table><colgroup><col class="c-m"><col class="c-name"><col class="c-code"><col class="c-comp"><col class="c-dept"><col class="c-stop"><col class="c-time"><col class="c-kind"></colgroup><thead><tr><th>م</th><th>الاسم</th><th>الكود</th><th>الشركة</th><th>القسم</th><th>محطة الركوب</th><th>الميعاد</th><th>الحالة</th></tr></thead><tbody>${rowsHtml}</tbody></table></body></html>`;
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
     return res.end(html);
   }
@@ -422,19 +431,45 @@ async function handle(req, res) {
   if (p === '/api/admin/export.xlsx') {
     if (!needAdmin()) return;
     const lineId = u.searchParams.get('line') || '';
+    const flat = u.searchParams.get('flat') === '1';
     const lines = lineId ? state.lines.filter(l => l.id === lineId) : state.lines.slice().sort((a, b) => a.position - b.position);
-    const rows = [['الخط', 'محطة الركوب بالتحديد', 'ميعاد الركوب', 'الاسم', 'الشركة', 'الكود', 'القسم', 'الحاله', 'خط الوردية التانية', 'محطة الوردية التانية', 'ميعاد الوردية التانية', 'خط الوردية التالتة', 'محطة الوردية التالتة', 'ميعاد الوردية التالتة']];
-    for (const l of lines) {
-      const riders = state.riders.filter(r => r.lineId === l.id);
-      if (!riders.length) { rows.push([l.name, '', '', '', '', '', '', '', '', '', '', '', '', '', '']); continue; }
-      for (const r of riders) {
-        const st = l.stops.find(s => s.id === r.stopId);
-        const l2n = (state.lines.find(x => x.id === r.line2Id) || {}).name || '';
-        const l3n = (state.lines.find(x => x.id === r.line3Id) || {}).name || '';
-        rows.push([l.name, r.stopName || (st ? st.name : ''), r.time || '', r.name, r.company || '', r.code || '', r.department || '', r.kind === 'flex' ? 'متغير' : 'ثابت', l2n, r.stop2 || '', r.time2 || '', l3n, r.stop3 || '', r.time3 || '']);
+    const head = ['الخط', 'محطة الركوب بالتحديد', 'ميعاد الركوب', 'الاسم', 'الشركة', 'الكود', 'القسم', 'الحاله', 'خط الوردية التانية', 'محطة الوردية التانية', 'ميعاد الوردية التانية', 'خط الوردية التالتة', 'محطة الوردية التالتة', 'ميعاد الوردية التالتة'];
+    const riderCells = (l, r) => {
+      const st = l.stops.find(s => s.id === r.stopId);
+      const l2n = (state.lines.find(x => x.id === r.line2Id) || {}).name || '';
+      const l3n = (state.lines.find(x => x.id === r.line3Id) || {}).name || '';
+      return [r.stopName || (st ? st.name : ''), r.time || '', r.name, r.company || '', r.code || '', r.department || '', r.kind === 'flex' ? 'متغير' : 'ثابت', l2n, r.stop2 || '', r.time2 || '', l3n, r.stop3 || '', r.time3 || ''];
+    };
+    let buf;
+    if (lineId || flat) {
+      // single flat sheet (per-line button, or ?flat=1 used by the daily backup)
+      const rows = [head];
+      for (const l of lines) {
+        const riders = state.riders.filter(r => r.lineId === l.id);
+        if (!riders.length) { rows.push([l.name, '', '', '', '', '', '', '', '', '', '', '', '', '', '']); continue; }
+        for (const r of riders) rows.push([l.name, ...riderCells(l, r)]);
       }
+      buf = buildXlsx(lineId && lines[0] ? lines[0].name : 'كل الخطوط', rows, { widths: [26, 22, 10, 20, 14, 8, 14, 8, 22, 18, 12, 22, 18, 12], centerCols: [2, 5, 7, 10, 13] });
+    } else {
+      // one workbook: summary sheet + one sheet per line, riders sorted by boarding time
+      const byTime = l => state.riders.filter(r => r.lineId === l.id).slice().sort((x, y) => String(x.time || '99').localeCompare(String(y.time || '99')) || String(x.createdAt).localeCompare(String(y.createdAt)));
+      const summary = [['الخط', 'عدد الموظفين']];
+      let total = 0;
+      for (const l of lines) { const n = state.riders.filter(r => r.lineId === l.id).length; total += n; summary.push([l.name, String(n)]); }
+      summary.push(['الإجمالي', String(total)]);
+      const sheets = [{ name: 'كل الخطوط', rows: summary, opts: { widths: [30, 12], centerCols: [1] } }];
+      const used = new Set();
+      for (const l of lines) {
+        let nm = (l.name || 'خط').replace(/[\\\/\?\*\[\]:]/g, ' ').slice(0, 31) || 'خط';
+        const base = nm; let k = 2;
+        while (used.has(nm)) nm = (base.slice(0, 27) + ' ' + k++).slice(0, 31);
+        used.add(nm);
+        const rows = [head.slice(1)];
+        for (const r of byTime(l)) rows.push(riderCells(l, r));
+        sheets.push({ name: nm, rows, opts: { widths: [22, 10, 20, 14, 8, 14, 8, 22, 18, 12, 22, 18, 12], centerCols: [1, 4, 6, 9, 12] } });
+      }
+      buf = buildXlsxMulti(sheets);
     }
-    const buf = buildXlsx(lineId && lines[0] ? lines[0].name : 'كل الخطوط', rows, { widths: [26, 22, 10, 20, 14, 8, 14, 8, 22, 18, 12, 22, 18, 12], centerCols: [2, 5, 7, 10, 13] });
     res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="lines.xlsx"` });
     return res.end(buf);
   }
