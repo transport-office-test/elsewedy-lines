@@ -139,13 +139,14 @@ function cleanCode(v) {
 }
 function validCode(s) { return s.length >= 2 && /[0-9A-Z\u0600-\u06FF]/.test(s); }
 
-/* simple per-IP rate limit for public registration */
+/* per-IP rate limit for public registration (60 per 10 min — generous on purpose:
+   employees may register together from one office PC or shared company network) */
 const regHits = new Map(); // ip -> [timestamps]
 function regAllowed(req) {
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '?';
   const now = Date.now(); const win = 10 * 60 * 1000;
   const arr = (regHits.get(ip) || []).filter(t => now - t < win);
-  if (arr.length >= 12) { regHits.set(ip, arr); return false; }
+  if (arr.length >= 60) { regHits.set(ip, arr); return false; } // generous: shared company networks/PCs share one IP
   arr.push(now); regHits.set(ip, arr);
   if (regHits.size > 5000) regHits.clear();
   return true;
