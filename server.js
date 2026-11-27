@@ -23,7 +23,7 @@ let pgPool = null;
 
 function uid(prefix) { return prefix + crypto.randomBytes(8).toString('hex'); }
 
-const DEFAULT_COMPANIES = ['السويدي', 'المتحدة للصناعات', 'الألمونيوم', 'الهندسية', 'إيجيتك', 'الاسلاك', 'بيدي وير', 'العربيه الكابلات', 'بروفيشنال'];
+const DEFAULT_COMPANIES = ['المتحدة للصناعات', 'الألمونيوم', 'الهندسية', 'إيجيتك', 'الاسلاك', 'بيدي وير', 'العربيه الكابلات', 'بروفيشنال'];
 
 function seedState() {
   const seed = JSON.parse(fs.readFileSync(SEED_FILE, 'utf8'));
@@ -287,6 +287,17 @@ async function handle(req, res) {
     return send(res, 200, { lines: out, companies: state.companies });
   }
 
+  if (p === '/api/admin/password' && req.method === 'POST') {
+    if (!needAdmin()) return;
+    const b = await readBody(req);
+    const next = String(b.next || '');
+    if (next.length < 6 || next.length > 100) return send(res, 400, { error: 'pwlen' });
+    const u = state.users.find(x => x.id === user.id);
+    if (!u) return send(res, 400, { error: 'auth' });
+    u.passHash = hashPw(next);
+    saveSoon();
+    return send(res, 200, { ok: true });
+  }
   if (p === '/api/admin/companies' && req.method === 'POST') {
     if (!needAdmin()) return;
     const b = await readBody(req);
