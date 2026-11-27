@@ -228,8 +228,10 @@ async function handle(req, res) {
     const b = await readBody(req);
     const line = state.lines.find(l => l.id === clean(b.lineId, 40) && l.active);
     if (!line) return send(res, 400, { error: 'line' });
-    const stop = line.stops.find(s => s.id === clean(b.stopId, 40));
-    if (!stop) return send(res, 400, { error: 'stop' });
+    const stopName = cleanName(b.stopName);
+    if (stopName.length < 2) return send(res, 400, { error: 'stop' });
+    const btime = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(b.time || '').trim()) ? String(b.time).trim() : '';
+    if (!btime) return send(res, 400, { error: 'time' });
     const name = cleanName(b.name);
     const rtype = b.rtype === 'external' ? 'external' : 'employee';
     let code = cleanCode(b.code || '');
@@ -250,9 +252,9 @@ async function handle(req, res) {
         return send(res, 409, { error: 'dup', line: dl ? dl.name : '' });
       }
     }
-    const rider = { id: uid('R'), lineId: line.id, stopId: stop.id, name, code, company, rtype, kind: b.kind === 'flex' ? 'flex' : 'fixed', createdAt: new Date().toISOString() };
+    const rider = { id: uid('R'), lineId: line.id, stopId: '', stopName, time: btime, name, code, company, rtype, kind: b.kind === 'flex' ? 'flex' : 'fixed', createdAt: new Date().toISOString() };
     state.riders.push(rider); saveSoon();
-    return send(res, 200, { ok: true, line: line.name, stop: stop.name, time: line.time, price: line.price });
+    return send(res, 200, { ok: true, line: line.name, stop: stopName, time: btime, price: line.price });
   }
 
   // auth
@@ -284,7 +286,7 @@ async function handle(req, res) {
       stops: l.stops.map(s => ({ id: s.id, name: s.name })),
       riders: state.riders.filter(r => r.lineId === l.id).map(r => {
         const st = l.stops.find(s => s.id === r.stopId);
-        return { id: r.id, name: r.name, code: r.code, company: r.company || '', stop: st ? st.name : '', stopPos: st ? st.position : 999, kind: r.kind, rtype: r.rtype || 'employee', createdAt: r.createdAt };
+        return { id: r.id, name: r.name, code: r.code, company: r.company || '', stop: r.stopName || (st ? st.name : ''), stopPos: st ? st.position : 999, kind: r.kind, rtype: r.rtype || 'employee', time: r.time || '', createdAt: r.createdAt };
       }).sort((a, b) => a.stopPos - b.stopPos || a.createdAt.localeCompare(b.createdAt))
     }));
     return send(res, 200, { lines: out });
@@ -351,7 +353,7 @@ async function handle(req, res) {
       if (!riders.length) { rows.push(['', '', '', l.stops[0] ? l.stops[0].name : '', l.time, l.price, l.driver, l.driverId, l.name, '', '']); continue; }
       for (const r of riders) {
         const st = l.stops.find(s => s.id === r.stopId);
-        rows.push([r.code || '', r.name, r.company || '', st ? st.name : '', l.time, l.price, l.driver, l.driverId, l.name, r.kind === 'flex' ? 'متغير' : 'ثابت', r.rtype === 'external' ? 'خارجي' : 'موظف سويدي']);
+        rows.push([r.code || '', r.name, r.company || '', r.stopName || (st ? st.name : ''), r.time || l.time, l.price, l.driver, l.driverId, l.name, r.kind === 'flex' ? 'متغير' : 'ثابت', r.rtype === 'external' ? 'خارجي' : 'موظف سويدي']);
       }
     }
     const buf = buildXlsx(lineId && lines[0] ? lines[0].name : 'كل الخطوط', rows);
