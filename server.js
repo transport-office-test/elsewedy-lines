@@ -382,11 +382,12 @@ async function handle(req, res) {
   }
 
   // PWA icons: PNGs are embedded as base64 in icons-data.js (repo holds text only)
-  if (p === '/icon-192.png' || p === '/icon-512.png') {
+  if (p === '/icon-192.png' || p === '/icon-512.png' || p === '/og-image.jpg') {
     const icons = require('./icons-data.js');
     const b64 = icons[p];
     if (b64) {
-      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-cache' });
+      const ct = p.endsWith('.jpg') ? 'image/jpeg' : 'image/png';
+      res.writeHead(200, { 'Content-Type': ct, 'Cache-Control': 'no-cache' });
       return res.end(Buffer.from(b64, 'base64'));
     }
   }
