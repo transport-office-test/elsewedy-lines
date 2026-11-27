@@ -390,6 +390,33 @@ async function handle(req, res) {
     }
   }
 
+  // Android APK: served from base64 text parts in apk-parts/ (repo holds text only)
+  if (p === '/app.apk') {
+    try {
+      const dir = path.join(__dirname, 'apk-parts');
+      const b64 = fs.readdirSync(dir).filter(f => f.endsWith('.txt')).sort().map(f => fs.readFileSync(path.join(dir, f), 'utf8')).join('');
+      res.writeHead(200, {
+        'Content-Type': 'application/vnd.android.package-archive',
+        'Content-Disposition': 'attachment; filename="elsewedy-lines.apk"',
+        'Cache-Control': 'no-cache'
+      });
+      return res.end(Buffer.from(b64, 'base64'));
+    } catch (e) { return send(res, 404, { error: 'apk-missing' }); }
+  }
+
+  // Digital Asset Links: lets the Android TWA open full-screen without the URL bar
+  if (p === '/.well-known/assetlinks.json') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+    return res.end(JSON.stringify([{
+      relation: ['delegate_permission/common.handle_all_urls'],
+      target: {
+        namespace: 'android_app',
+        package_name: 'com.elsewedy.lines',
+        sha256_cert_fingerprints: ['F3:7E:AC:9C:0A:AD:8D:A2:DD:4A:37:8F:8C:20:AF:EE:53:06:E2:1C:BE:5F:B8:86:79:26:ED:63:7A:9B:AE:91']
+      }
+    }]));
+  }
+
   // static
   let fp = p === '/' ? '/index.html' : p;
   const file = path.join(__dirname, 'public', path.normalize(fp).replace(/^(\.\.[/\\])+/, ''));
