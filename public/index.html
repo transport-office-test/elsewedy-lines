@@ -180,6 +180,7 @@ footer{margin-top:26px;text-align:center;color:var(--ink2);font-size:11.5px}
       <div id="codeRow">
         <label id="codeLbl">الكود</label>
         <input id="codeIn" inputmode="numeric">
+        <select id="workplaceSel" class="hidden"></select>
       </div>
       <div id="deptRow">
         <label data-i18n="fDept">القسم</label>
@@ -349,7 +350,7 @@ footer{margin-top:26px;text-align:center;color:var(--ink2);font-size:11.5px}
       </div>
       <div class="modal-list">
         <label data-i18n="fName">الاسم</label><input id="edName">
-        <label data-i18n="fCode">الكود</label><input id="edCode" inputmode="numeric">
+        <label id="edCodeLbl" data-i18n="fCode">الكود</label><input id="edCode" inputmode="numeric"><select id="edWorkplace" class="hidden"></select>
         <label data-i18n="fCompany">الشركة</label><select id="edCompany"></select>
         <label data-i18n="fDept">القسم</label><input id="edDept">
         <label data-i18n="colStop">محطة الركوب بالتحديد</label><input id="edStop">
@@ -417,6 +418,17 @@ function fillCompanySel(){
   ph.value = ''; ph.textContent = t('pickCompany'); ph.disabled = true; ph.selected = true;
   s.appendChild(ph);
   COMPANIES.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; s.appendChild(o); });
+  fillWorkplaceSel();
+}
+function fillWorkplaceSel(){
+  const s = $('workplaceSel'); if (!s) return;
+  const cur = s.value;
+  s.innerHTML = '';
+  const ph = document.createElement('option');
+  ph.value = ''; ph.textContent = t('pickCompany'); ph.disabled = true; ph.selected = true;
+  s.appendChild(ph);
+  COMPANIES.filter(c => c !== 'بروفيشنال').forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; s.appendChild(o); });
+  if (cur && [...s.options].some(o => o.value === cur)) s.value = cur;
 }
 function makeLineDD(p){
   const DD = $('line' + p + 'DD'), field = $('line' + p + 'Field'), panel = $('line' + p + 'Panel'), search = $('line' + p + 'Search'), list = $('line' + p + 'List'), val = $('line' + p + 'FieldVal');
@@ -526,13 +538,17 @@ function timeLiveCheck(forceBad, inId, hintId){
 }
 ['timeIn', 'time2In', 'time3In'].forEach(id => $(id).addEventListener('blur', () => { const el = $(id); const n = normTime(el.value); if (n) el.value = n; }));
 function clearFieldErrs(){ document.querySelectorAll('.field-err').forEach(x => x.classList.remove('field-err')); }
-['stopIn','timeIn','nameIn','codeIn','deptIn','companySel','stop2In','time2In','stop3In','time3In'].forEach(id => $(id).addEventListener('input', e => e.target.classList.remove('field-err')));
+['stopIn','timeIn','nameIn','codeIn','deptIn','companySel','workplaceSel','stop2In','time2In','stop3In','time3In'].forEach(id => $(id).addEventListener('input', e => e.target.classList.remove('field-err')));
 function syncCodeRow(){
   const prof = $('companySel').value === 'بروفيشنال';
   $('codeLbl').textContent = prof ? t('fWorkplace') : t('fCode');
-  $('codeIn').inputMode = prof ? 'text' : 'numeric';
-  $('codeIn').placeholder = prof ? t('workplacePh') : '';
+  $('codeIn').classList.toggle('hidden', prof);
+  $('workplaceSel').classList.toggle('hidden', !prof);
+  if (prof) fillWorkplaceSel();
+  $('codeIn').inputMode = 'numeric';
+  $('codeIn').placeholder = '';
   $('codeIn').value = ''; $('codeIn').classList.remove('field-err');
+  $('workplaceSel').classList.remove('field-err');
 }
 $('companySel').addEventListener('change', syncCodeRow);
 $('codeIn').addEventListener('input', e => { const el = e.target; if ($('companySel').value === 'بروفيشنال') return; el.value = el.value.replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x660)).replace(/[۰-۹]/g, d => String(d.charCodeAt(0) - 0x6F0)).replace(/[^0-9]/g, ''); });
@@ -549,7 +565,7 @@ $('kindFixed').onclick = () => { kind = 'fixed'; $('kindFixed').classList.add('o
 $('kindFlex').onclick = () => { kind = 'flex'; $('kindFlex').classList.add('on'); $('kindFixed').classList.remove('on'); $('flex2').classList.remove('hidden'); };
 $('regBtn').onclick = async () => {
   const err = $('regErr'); err.classList.add('hidden'); clearFieldErrs();
-  const l = curLine(), stopName = $('stopIn').value.trim(), btime = normTime($('timeIn').value) || $('timeIn').value.trim(), name = $('nameIn').value.trim(), code = $('codeIn').value.trim();
+  const l = curLine(), stopName = $('stopIn').value.trim(), btime = normTime($('timeIn').value) || $('timeIn').value.trim(), name = $('nameIn').value.trim(), isProfNow = $('companySel').value === 'بروفيشنال', code = isProfNow ? $('workplaceSel').value : $('codeIn').value.trim();
   const flex = kind === 'flex';
   const l2id = flex ? dd2.getId() : null;
   const l3id = flex ? dd3.getId() : null;
@@ -560,7 +576,7 @@ $('regBtn').onclick = async () => {
   const company = $('companySel').value;
   const department = $('deptIn').value.trim();
   const prof = company === 'بروفيشنال';
-  const bad = !l ? ['lineField','errLine'] : !stopName ? ['stopIn','errStop'] : !btime ? ['timeIn', 'errTime'] : !validTripleName(name) ? ['nameIn','errNameTriple'] : !company ? ['companySel','errCompany'] : (!code) ? ['codeIn', prof ? 'errWorkplace' : 'errCode'] : !department ? ['deptIn','errDept'] : (flex && !l2id) ? ['line2Field','errLine2'] : (flex && !stop2) ? ['stop2In','errStop2'] : (flex && !btime2) ? ['time2In', 'errTime2'] : (flex && !l3id) ? ['line3Field','errLine3'] : (flex && !stop3) ? ['stop3In','errStop3'] : (flex && !btime3) ? ['time3In', 'errTime3'] : null;
+  const bad = !l ? ['lineField','errLine'] : !stopName ? ['stopIn','errStop'] : !btime ? ['timeIn', 'errTime'] : !validTripleName(name) ? ['nameIn','errNameTriple'] : !company ? ['companySel','errCompany'] : (!code) ? [prof ? 'workplaceSel' : 'codeIn', prof ? 'errWorkplace' : 'errCode'] : !department ? ['deptIn','errDept'] : (flex && !l2id) ? ['line2Field','errLine2'] : (flex && !stop2) ? ['stop2In','errStop2'] : (flex && !btime2) ? ['time2In', 'errTime2'] : (flex && !l3id) ? ['line3Field','errLine3'] : (flex && !stop3) ? ['stop3In','errStop3'] : (flex && !btime3) ? ['time3In', 'errTime3'] : null;
   if (bad) { showFieldError(bad[0], bad[1]); return; }
   if (btime) $('timeIn').value = btime;
   if (btime2) $('time2In').value = btime2;
@@ -574,7 +590,7 @@ $('regBtn').onclick = async () => {
       (j.time3 ? `<div>${t('shift3')}: <b>${esc(j.line3)} • ${esc(j.stop3)} • ${esc(String(j.time3))}</b></div>` : '');
     $('doneCard').classList.remove('hidden');
     $('regBtn').closest('.card').classList.add('hidden');
-    $('nameIn').value = ''; $('codeIn').value = ''; $('deptIn').value = ''; $('stopIn').value = ''; $('timeIn').value = ''; $('stop2In').value = ''; $('time2In').value = ''; $('stop3In').value = ''; $('time3In').value = ''; dd2.setId(null); dd3.setId(null);
+    $('nameIn').value = ''; $('codeIn').value = ''; $('deptIn').value = ''; $('stopIn').value = ''; $('timeIn').value = ''; $('stop2In').value = ''; $('time2In').value = ''; $('stop3In').value = ''; $('time3In').value = ''; $('workplaceSel').selectedIndex = 0; dd2.setId(null); dd3.setId(null);
   } catch (e) {
     const code = e.payload && e.payload.error;
     err.textContent = e.status === 409 ? t('dup') + (e.payload.line || '')
@@ -899,6 +915,7 @@ function openEdit(r){
   $('edName').value = r.name || '';
   $('edCode').value = r.code || '';
   $('edCompany').innerHTML = (ADMIN_DATA.companies || []).map(c => `<option ${c === r.company ? 'selected' : ''}>${esc(c)}</option>`).join('');
+  syncEdProf(r.company === 'بروفيشنال', r.code || '');
   $('edDept').value = r.department || '';
   $('edStop').value = r.stop || '';
   $('edTime').value = (r.time || '');
@@ -909,6 +926,17 @@ function openEdit(r){
   $('edErr').classList.add('hidden');
   $('editModal').classList.remove('hidden');
 }
+function syncEdProf(prof, cur){
+  $('edCodeLbl').textContent = prof ? t('fWorkplace') : t('fCode');
+  $('edCode').classList.toggle('hidden', prof);
+  $('edWorkplace').classList.toggle('hidden', !prof);
+  if (prof) {
+    const list = (ADMIN_DATA.companies || []).filter(c => c !== 'بروفيشنال');
+    const extra = cur && !list.includes(cur) ? `<option selected>${esc(cur)}</option>` : '';
+    $('edWorkplace').innerHTML = list.map(c => `<option ${c === cur ? 'selected' : ''}>${esc(c)}</option>`).join('') + extra;
+  }
+}
+$('edCompany').addEventListener('change', () => syncEdProf($('edCompany').value === 'بروفيشنال', ''));
 function closeEdit(){ $('editModal').classList.add('hidden'); EDIT_R = null; }
 $('editClose').onclick = closeEdit;
 $('editModal').addEventListener('click', e => { if (e.target === $('editModal')) closeEdit(); });
@@ -918,7 +946,8 @@ $('edCode').addEventListener('input', e => { const el = e.target; if ($('edCompa
 $('edSave').onclick = async () => {
   if (!EDIT_R) return;
   const err = m => { const e = $('edErr'); e.textContent = m; e.classList.remove('hidden'); };
-  const payload = { id: EDIT_R.id, name: $('edName').value.trim(), code: $('edCode').value.trim(), company: $('edCompany').value, department: $('edDept').value.trim(), stopName: $('edStop').value.trim(), time: normTime($('edTime').value) || $('edTime').value.trim(), kind: $('edKind').value, stop2: $('edStop2').value.trim(), time2: normTime($('edTime2').value) || $('edTime2').value.trim(), stop3: $('edStop3').value.trim(), time3: normTime($('edTime3').value) || $('edTime3').value.trim() };
+  const edProf = $('edCompany').value === 'بروفيشنال';
+  const payload = { id: EDIT_R.id, name: $('edName').value.trim(), code: edProf ? $('edWorkplace').value : $('edCode').value.trim(), company: $('edCompany').value, department: $('edDept').value.trim(), stopName: $('edStop').value.trim(), time: normTime($('edTime').value) || $('edTime').value.trim(), kind: $('edKind').value, stop2: $('edStop2').value.trim(), time2: normTime($('edTime2').value) || $('edTime2').value.trim(), stop3: $('edStop3').value.trim(), time3: normTime($('edTime3').value) || $('edTime3').value.trim() };
   if (!validTripleName(payload.name)) return err(t('errNameTriple'));
   if (payload.company === 'بروفيشنال' ? payload.code.length < 2 : !payload.code) return err(payload.company === 'بروفيشنال' ? t('errWorkplace') : t('errCode'));
   if (!payload.time) return err(t('errTime'));
